@@ -1,0 +1,17 @@
+{
+  "name": "worldsmith",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "npx serve ."
+  },
+  "keywords": [],
+  "type": "module",
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.12.0"
+  }
+}

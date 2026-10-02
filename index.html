@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Worldsmith</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌍</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --panel: rgba(18, 20, 28, 0.74);
+    --line: rgba(255, 255, 255, 0.09);
+    --text: #efe9da;
+    --dim: #a9a394;
+    --gold: #e9c46a;
+    --war: #ff7a66;
+    --ally: #8fd18a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: linear-gradient(#5f98d6 0%, #9fc3e6 45%, #c4dcec 70%);
+    color: var(--text);
+    font: 13px/1.45 Inter, system-ui, sans-serif;
+    user-select: none;
+  }
+  #app canvas { display: block; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  }
+  #top {
+    position: fixed; top: 12px; left: 12px;
+    display: flex; align-items: center; gap: 14px;
+    padding: 8px 12px;
+  }
+  .brand { font-family: Cinzel, serif; font-weight: 800; letter-spacing: 0.12em; color: var(--gold); font-size: 16px; }
+  #year { font-family: Cinzel, serif; font-weight: 600; }
+  #pop, #seed { color: var(--dim); }
+  .speed { display: flex; gap: 3px; }
+  button {
+    font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; cursor: pointer;
+  }
+  button:hover { background: rgba(255, 255, 255, 0.14); }
+  button.on { background: var(--gold); color: #1d1a12; border-color: var(--gold); }
+
+  #nations {
+    position: fixed; top: 64px; left: 12px; width: 268px;
+    display: flex; flex-direction: column; gap: 8px;
+    max-height: calc(100vh - 330px); overflow-y: auto;
+  }
+  .nation {
+    background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--c, #888);
+    border-radius: 8px; padding: 8px 10px; backdrop-filter: blur(6px);
+  }
+  .nt { font-family: Cinzel, serif; font-weight: 600; color: var(--c); font-size: 14px; }
+  .ns, .dim { color: var(--dim); font-size: 12px; }
+  .king { margin-top: 3px; }
+  .stats { display: flex; gap: 10px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .rel { margin-top: 3px; font-size: 12px; }
+  .war { color: var(--war); } .ally { color: var(--ally); } .peace { color: var(--dim); }
+
+  #chronicle {
+    position: fixed; left: 12px; bottom: 12px; width: 380px; height: 220px;
+    padding: 8px 10px; display: flex; flex-direction: column;
+  }
+  #chronicle h3 { margin: 0 0 4px; font: 600 12px Cinzel, serif; letter-spacing: 0.14em; color: var(--gold); }
+  #chronicle-list { overflow-y: auto; flex: 1; mask-image: linear-gradient(#000 70%, transparent); }
+  .entry { padding: 3px 0; border-bottom: 1px solid var(--line); animation: fadein 0.5s; }
+  .yr { color: var(--dim); font-size: 11px; margin-right: 6px; font-variant-numeric: tabular-nums; }
+  @keyframes fadein { from { opacity: 0; transform: translateX(-6px); } }
+
+  #toolbar {
+    position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 4px; padding: 6px;
+  }
+  .tool {
+    position: relative; width: 58px; height: 58px; padding: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  }
+  .tool .ic { font-size: 22px; line-height: 1; }
+  .tool .nm { font-size: 9.5px; color: var(--dim); white-space: nowrap; overflow: hidden; max-width: 54px; }
+  .tool.on .nm { color: #1d1a12; }
+  .tool .k { position: absolute; top: 2px; left: 4px; font-size: 9px; color: var(--dim); }
+  .tool.on .k { color: #1d1a12; }
+
+  #side { position: fixed; top: 12px; right: 12px; width: 260px; display: flex; flex-direction: column; gap: 8px; }
+  #hint, #inspect { padding: 9px 11px; }
+  #inspect { display: none; }
+  .controls { padding: 9px 11px; color: var(--dim); font-size: 12px; }
+  .controls b { color: var(--text); font-weight: 600; }
+
+  #tip {
+    position: fixed; top: 0; left: 0; display: none; pointer-events: none;
+    padding: 6px 9px; max-width: 260px; z-index: 5;
+  }
+
+  #possess { display: none; }
+  #crosshair {
+    position: fixed; top: 50%; left: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); pointer-events: none;
+  }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255, 255, 255, 0.85); }
+  #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+  #crosshair::after { top: 8px; left: 0; height: 2px; width: 18px; }
+  #poss-bar {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+    padding: 8px 14px; text-align: center; min-width: 280px;
+  }
+  .hp { height: 6px; background: rgba(255, 255, 255, 0.12); border-radius: 3px; margin: 6px 0 4px; overflow: hidden; }
+  #poss-hp { height: 100%; background: linear-gradient(90deg, #d9573c, #f0a050); width: 100%; transition: width 0.2s; }
+
+  #toast {
+    position: fixed; top: 22%; left: 50%; transform: translate(-50%, -10px); opacity: 0;
+    font-family: Cinzel, serif; font-size: 20px; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+    transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  #intro {
+    position: fixed; inset: 0; display: grid; place-items: center;
+    background: radial-gradient(ellipse at center, rgba(10, 12, 20, 0.55), rgba(10, 12, 20, 0.85));
+    transition: opacity 0.6s; z-index: 10;
+  }
+  #intro.gone { opacity: 0; pointer-events: none; }
+  .intro-card { max-width: 520px; padding: 28px 32px; text-align: center; }
+  .intro-card h1 { font: 800 44px Cinzel, serif; letter-spacing: 0.14em; color: var(--gold); margin: 0; }
+  .intro-card .sub { font-family: Cinzel, serif; color: var(--dim); letter-spacing: 0.2em; margin-bottom: 16px; }
+  .intro-card p { color: #d8d2c2; }
+  .intro-card ul { text-align: left; color: var(--dim); padding-left: 20px; }
+  .intro-card li b { color: var(--text); }
+  #begin { margin-top: 12px; padding: 10px 28px; font: 600 15px Cinzel, serif; letter-spacing: 0.1em; background: var(--gold); color: #1d1a12; border: 0; }
+
+  @media (max-width: 900px) {
+    #nations, #side .controls { display: none; }
+    #chronicle { width: calc(100vw - 24px); height: 120px; bottom: 84px; }
+    #toolbar { left: 12px; right: 12px; transform: none; overflow-x: auto; }
+    #side { width: 200px; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="top" class="panel">
+  <span class="brand">WORLDSMITH</span>
+  <span id="year">Year 1</span>
+  <span id="pop"></span>
+  <div class="speed">
+    <button data-speed="0" title="Pause (Space)">❚❚</button>
+    <button data-speed="1">1×</button>
+    <button data-speed="2">2×</button>
+    <button data-speed="4">4×</button>
+  </div>
+  <button id="new-world" title="Generate a new world">New world</button>
+  <span id="seed"></span>
+</div>
+
+<div id="nations"></div>
+
+<div id="chronicle" class="panel">
+  <h3>CHRONICLE</h3>
+  <div id="chronicle-list"></div>
+</div>
+
+<div id="side">
+  <div id="hint" class="panel"></div>
+  <div id="inspect" class="panel"></div>
+  <div class="controls panel">
+    <b>Camera</b>: right-drag rotate · middle-drag or Shift-drag pan · WASD move · Q/E turn · wheel zoom<br>
+    <b>Keys</b>: 1–9, 0 and ` pick powers · Space pause
+  </div>
+</div>
+
+<div id="toolbar" class="panel"></div>
+<div id="tip" class="panel"></div>
+<div id="toast"></div>
+
+<div id="possess">
+  <div id="crosshair"></div>
+  <div id="poss-bar" class="panel">
+    <div id="poss-name"></div>
+    <div class="hp"><div id="poss-hp"></div></div>
+    <div class="dim">WASD move · Space jump · click strike · right-click build · Esc leave body</div>
+  </div>
+</div>
+
+<div id="intro">
+  <div class="intro-card panel">
+    <h1>WORLDSMITH</h1>
+    <div class="sub">A GOD SIMULATOR</div>
+    <p>Humans, goblins and elves settle the land on their own. They raise houses, crown kings who age and die, forge alliances and go to war. You are their god, and every scar you leave on the world stays.</p>
+    <ul>
+      <li><b>✋ Hand of God</b>: tear up houses, trees, people or earth and hurl them</li>
+      <li><b>☄️ Meteors, ⚡ lightning, 🔥 fire</b>: burn nations down</li>
+      <li><b>⛰️ Raise and 🕳️ lower</b>: reshape the land</li>
+      <li><b>👁️ Possess</b>: drop into a peasant and walk through the war you started</li>
+    </ul>
+    <button id="begin">Begin</button>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
