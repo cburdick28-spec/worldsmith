@@ -7,7 +7,7 @@ import { log } from './ui.js';
 import { rand, pick } from './noise.js';
 
 export const YEAR = 4; // sim seconds per year
-export const game = { year: 1, yearT: 0 };
+export const game = { year: 1, yearT: 0, prosperity: 1 };
 export const nations = [];
 const rels = new Map();
 let nextNid = 1, dipT = 0;
@@ -81,7 +81,8 @@ export function placeNext(s) {
     s.built = true;
     s.total = s.alive;
     const n = s.nation;
-    if (n.site === s) n.site = null;
+    const si = n.sites.indexOf(s);
+    if (si >= 0) n.sites.splice(si, 1);
     if (!n.houses.includes(s)) n.houses.push(s);
     return false;
   }
@@ -93,7 +94,8 @@ export function detachHouse(s) {
   if (!n) return;
   const i = n.houses.indexOf(s);
   if (i >= 0) n.houses.splice(i, 1);
-  if (n.site === s) n.site = null;
+  const si = n.sites.indexOf(s);
+  if (si >= 0) n.sites.splice(si, 1);
   if (s.capital && n.alive) {
     log(`🔥 The capital of ${nm(n)} lies in ruins.`);
     const next = n.houses[0];
@@ -117,10 +119,11 @@ function clearTrees(x0, z0, x1, z1, n) {
   }
 }
 
-function findSite(n) {
+function findSite(n, rough = 2) {
   for (let tries = 0; tries < 70; tries++) {
     const allowTrees = tries >= 35;
-    const base = n.houses.length ? pick(n.houses) : null;
+    const bases = n.houses.length ? n.houses : n.sites;
+    const base = bases.length ? pick(bases) : null;
     const bx = base ? base.cx : n.capital.x, bz = base ? base.cz : n.capital.z;
     const a = Math.random() * Math.PI * 2, d = rand(8, 15 + tries * 0.15);
     const x0 = Math.round(bx + Math.cos(a) * d - 3.5), z0 = Math.round(bz + Math.sin(a) * d - 3.5);
@@ -133,8 +136,8 @@ function findSite(n) {
       if (h < SEA + 1) { ok = false; break; }
       mn = Math.min(mn, h); mx = Math.max(mx, h);
     }
-    if (!ok || mx - mn > 2) continue;
-    if (nations.some(m => m !== n && m.alive && m.houses.some(h => Math.hypot(h.cx - x0 - 3.5, h.cz - z0 - 3.5) < 13))) continue;
+    if (!ok || mx - mn > rough) continue;
+    if (nations.some(m => m !== n && m.alive && [...m.houses, ...m.sites].some(h => Math.hypot(h.cx - x0 - 3.5, h.cz - z0 - 3.5) < 13))) continue;
     return { x0, z0 };
   }
   return null;
@@ -147,7 +150,7 @@ export function createNation(race, x, z) {
   const place = pickPlace(race);
   const n = {
     id: nextNid++, race, R, place, name: R.realm(place), css: R.color, color: new THREE.Color(R.color),
-    alive: true, wood: 24, houses: [], site: null, capital: { x, z }, king: null, units: new Set(),
+    alive: true, wood: 24, houses: [], sites: [], capital: { x, z }, king: null, units: new Set(),
     founded: game.year, birthT: 0, buildT: rand(0, 2), enemies: [], allies: [], genName: () => genName(race),
   };
   n.armor = n.color.clone().lerp(new THREE.Color('#6d727b'), 0.45);
@@ -207,43 +210,66 @@ export function onUnitDeath(u, cause, by) {
 function fallNation(n) {
   n.alive = false;
   for (const h of [...n.houses]) removeStruct(h, false);
-  if (n.site) removeStruct(n.site, false);
+  for (const st of n.sites) removeStruct(st, false);
   n.houses.length = 0;
-  n.site = null;
+  n.sites.length = 0;
   for (const m of nations) if (m !== n) { const r = rel(n, m); r.war = false; r.ally = false; }
   log(`🏚️ ${nm(n)} has fallen. Only ruins remain.`);
   refreshDiplomacy();
 }
 
-export const capacity = n => 3 + n.houses.length * n.R.perHouse;
+// ---------- divine gifts ----------
+
+export function giftWood(n, amount) {
+  n.wood += amount;
+}
+
+export function blessPeople(n, count) {
+  const homes = n.houses.length ? n.houses : null;
+  let made = 0;
+  for (let i = 0; i < count && units.length < MAXU; i++) {
+    if (homes) { const h = pick(homes); spawnUnit(n, h.x0 + 3.5, h.z0 + 0.5, { y: h.g + 1, age: 18 }); }
+    else if (n.king) spawnUnit(n, n.king.x + rand(-1, 1), n.king.z + rand(-1, 1), { y: n.king.y + 2, age: 18 });
+    made++;
+  }
+  return made;
+}
+
+// Prosperity packs more people into each house (1x: normal, 50x: about 6x as many).
+export const capacity = n => 3 + Math.round(n.houses.length * n.R.perHouse * (1 + (game.prosperity - 1) * 0.1));
 
 function updateNation(n, dt) {
   if (n.units.size === 0) { fallNation(n); return; }
   if (!n.king || !n.king.alive) crown(n);
 
   const cap = capacity(n);
-  n.birthT += dt;
-  if (n.birthT >= n.R.birth) {
-    n.birthT = 0;
+  const P = game.prosperity;
+  n.birthT += dt * P;
+  while (n.birthT >= n.R.birth) {
+    n.birthT -= n.R.birth;
     if (n.units.size < cap && n.houses.length && units.length < MAXU) {
       const h = pick(n.houses);
       const role = n.enemies.length && Math.random() < n.R.warRatio ? 'soldier' : 'villager';
       spawnUnit(n, h.x0 + 3.5, h.z0 + 0.5, { role, age: 16, y: h.g + 1 });
-    }
+    } else { n.birthT = 0; break; }
   }
 
-  n.buildT += dt;
+  n.buildT += dt * Math.min(P, 10);
   if (n.buildT < 2) return;
   n.buildT = 0;
-  if (n.site && n.site.dead) n.site = null;
-  if (!n.site && n.wood >= 8 && n.houses.length < 45 && (n.units.size >= cap - 3 || n.houses.length < 2)) {
-    const spot = findSite(n);
+  n.sites = n.sites.filter(st => !st.dead && !st.built);
+  const maxSites = P >= 3 ? Math.min(6, 1 + Math.floor(P / 3)) : 1;
+  const pending = n.sites.length * n.R.perHouse;
+  if (n.sites.length < maxSites && n.wood >= 8 && n.houses.length + n.sites.length < (P > 1 ? 90 : 45) &&
+      (n.units.size >= cap + pending - 3 || n.houses.length < 2)) {
+    const spot = findSite(n, P > 1 ? 4 : 2);
     if (spot) {
       clearTrees(spot.x0 - 1, spot.z0 - 1, spot.x0 + 7, spot.z0 + 7, n);
       n.wood -= 8;
       const g = flatten(spot.x0, spot.z0, 7);
-      n.site = createHouse(n, spot.x0, spot.z0, g, !n.houses.some(h => h.capital));
-      if (n.site.capital) n.capital = { x: n.site.cx, z: n.site.cz };
+      const site = createHouse(n, spot.x0, spot.z0, g, !n.houses.some(h => h.capital) && !n.sites.some(h => h.capital));
+      n.sites.push(site);
+      if (site.capital) n.capital = { x: site.cx, z: site.cz };
     }
   }
   // conscription
@@ -328,7 +354,7 @@ function fellTree(s) {
 export function chopTree(s, n) {
   if (s.dead) return;
   fellTree(s);
-  n.wood += 6;
+  n.wood += Math.round(6 * game.prosperity);
 }
 
 function processDamaged() {

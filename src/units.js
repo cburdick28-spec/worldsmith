@@ -1,12 +1,12 @@
 // People: humans, goblins and elves. AI, movement, combat and rendering.
 import * as THREE from '../vendor/three.module.js';
-import { W, D, H, SEA, WATER_Y, solid, set, get, owner, idx, inB, structs, B, BLOCK, isWaterCol } from './world.js';
-import { onUnitDeath, chopTree, placeNext, nations } from './nations.js';
+import { W, D, H, SEA, WATER_Y, groundTop, solid, set, get, owner, idx, inB, structs, B, BLOCK, isWaterCol } from './world.js';
+import { onUnitDeath, chopTree, placeNext, nations, game } from './nations.js';
 import { puff, sparks, arrow, spawnDebris, ignite, splash } from './effects.js';
 import { rand } from './noise.js';
 
 export const units = [];
-export const MAXU = 900;
+export const MAXU = 1200;
 let nextId = 1;
 
 export const RSTAT = {
@@ -51,7 +51,7 @@ export function spawnUnit(n, x, z, opts = {}) {
     age, maxAge, hp: st.hp, maxHp: st.hp,
     x, y: groundUnder(x, opts.y ?? H - 1, z), z, vx: 0, vy: 0, vz: 0, face: Math.random() * Math.PI * 2, side: 1,
     walk: 0, moving: false, state: 'idle', think: Math.random() * 2, timer: 0, target: null, task: null, tx: x, tz: z,
-    cd: 0, swing: 0, stuck: 0, held: false, flying: false, spin: 0, possessed: false, onFire: 0, alive: true, kills: 0,
+    cd: 0, swing: 0, stuck: 0, path: null, pi: 0, pgx: 0, pgz: 0, pathCd: 0, partial: false, repath: false, fails: 0, held: false, flying: false, spin: 0, possessed: false, onFire: 0, alive: true, kills: 0,
     born: performance.now(),
   };
   units.push(u);
@@ -74,6 +74,8 @@ export function setState(u, state, task = null) {
   u.task = task;
   u.timer = 0;
   u.stuck = 0;
+  u.path = null;
+  u.fails = 0;
 }
 
 export function damageUnit(u, dmg, by, cause) {
@@ -140,6 +142,143 @@ function moveToward(u, tx, tz, dt, mul = 1, near = 0.5) {
   return u.stuck > 1.5 ? 'stuck' : false;
 }
 
+// ---------- pathfinding: A* over columns, using the same step rules as walking ----------
+
+const NC = W * D;
+const gS = new Float32Array(NC), fromC = new Int32Array(NC), nodeY = new Int16Array(NC);
+const seen = new Uint32Array(NC), closed = new Uint32Array(NC);
+const hc = [], hf = [];
+let stamp = 0, pathBudget = 0;
+const MAX_NODES = 2500;
+const HW = 1.6; // weighted A*: slightly longer paths, far fewer nodes
+export const pathStats = { calls: 0, nodes: 0, partial: 0, unreachable: 0 };
+const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+function hpush(c, f) {
+  let i = hc.length;
+  hc.push(c); hf.push(f);
+  while (i > 0) {
+    const p = (i - 1) >> 1;
+    if (hf[p] <= f) break;
+    hc[i] = hc[p]; hf[i] = hf[p]; i = p;
+  }
+  hc[i] = c; hf[i] = f;
+}
+function hpop() {
+  const top = hc[0];
+  const c = hc.pop(), f = hf.pop();
+  const n = hc.length;
+  if (n) {
+    let i = 0;
+    for (;;) {
+      let m = i * 2 + 1;
+      if (m >= n) break;
+      if (m + 1 < n && hf[m + 1] < hf[m]) m++;
+      if (hf[m] >= f) break;
+      hc[i] = hc[m]; hf[i] = hf[m]; i = m;
+    }
+    hc[i] = c; hf[i] = f;
+  }
+  return top;
+}
+
+// Standing height after stepping from height y into column (nx, nz), or -1 if impossible.
+function stepFrom(y, nx, nz) {
+  if (nx < 1 || nz < 1 || nx >= W - 1 || nz >= D - 1) return -1;
+  let yy = Math.min(H - 1, y);
+  while (yy >= 0 && !solid(nx, yy, nz)) yy--;
+  const g = yy + 1;
+  if (solid(nx, g, nz) || solid(nx, g + 1, nz)) return -1;
+  if (g <= SEA && y > SEA) return -1;
+  if (g < y - 3) return -1;
+  return g;
+}
+
+const octile = (ax, az, bx, bz) => {
+  const dx = Math.abs(ax - bx), dz = Math.abs(az - bz);
+  return Math.max(dx, dz) + 0.414 * Math.min(dx, dz);
+};
+
+// Returns { cells, partial } leading to the goal or the closest reachable cell, or null when out of budget.
+function findPath(u, tx, tz, near) {
+  const reach = Math.max(0.75, near);
+  if (pathBudget <= 0) return null;
+  pathBudget--;
+  stamp++;
+  hc.length = 0; hf.length = 0;
+  const sx = Math.floor(u.x), sz = Math.floor(u.z), gx = Math.floor(tx), gz = Math.floor(tz);
+  const start = sz * W + sx;
+  seen[start] = stamp; gS[start] = 0; fromC[start] = -1; nodeY[start] = Math.floor(u.y + 0.05);
+  hpush(start, octile(sx, sz, gx, gz) * HW);
+  let best = start, bestH = Infinity, expanded = 0, reached = false;
+  while (hc.length && expanded < MAX_NODES) {
+    const c = hpop();
+    if (closed[c] === stamp) continue;
+    closed[c] = stamp;
+    expanded++;
+    const cx = c % W, cz = (c / W) | 0;
+    const h = octile(cx, cz, gx, gz);
+    if (h < bestH) { bestH = h; best = c; }
+    if (Math.hypot(cx + 0.5 - tx, cz + 0.5 - tz) <= reach) { best = c; reached = true; break; }
+    const y = nodeY[c];
+    for (let k = 0; k < 8; k++) {
+      const dx = DIRS[k][0], dz = DIRS[k][1];
+      const nx = cx + dx, nz = cz + dz;
+      const ni = nz * W + nx;
+      if (closed[ni] === stamp) continue;
+      if (k >= 4 && (stepFrom(y, cx + dx, cz) < 0 || stepFrom(y, cx, cz + dz) < 0)) continue; // no corner cutting
+      const ny = stepFrom(y, nx, nz);
+      if (ny < 0) continue;
+      const cost = gS[c] + (k >= 4 ? 1.414 : 1) + (ny > y ? 0.4 : 0) + (ny <= SEA ? 3 : 0);
+      if (seen[ni] !== stamp || cost < gS[ni]) {
+        seen[ni] = stamp; gS[ni] = cost; fromC[ni] = c; nodeY[ni] = ny;
+        hpush(ni, cost + octile(nx, nz, gx, gz) * HW);
+      }
+    }
+  }
+  const cells = [];
+  for (let c = best; c !== start && c >= 0; c = fromC[c]) cells.push(c);
+  cells.reverse();
+  pathStats.calls++; pathStats.nodes += expanded; if (!reached) { if (expanded >= MAX_NODES) pathStats.partial++; else pathStats.unreachable++; }
+  return { cells, partial: !reached && expanded >= MAX_NODES };
+}
+
+// Walk toward a goal along a planned path. Same return values as moveToward.
+function navigate(u, tx, tz, dt, mul = 1, near = 0.5) {
+  const d = Math.hypot(tx - u.x, tz - u.z);
+  if (d < near) { u.path = null; return true; }
+  if (d < 2.5 && !u.path) return moveToward(u, tx, tz, dt, mul, near);
+  u.pathCd -= dt;
+  const gx = Math.floor(tx), gz = Math.floor(tz);
+  if (!u.path || u.repath || Math.hypot(gx - u.pgx, gz - u.pgz) > 2.5) {
+    if (u.pathCd > 0) return moveToward(u, tx, tz, dt, mul, near); // don't replan every frame
+    const p = findPath(u, tx, tz, near);
+    if (!p) return moveToward(u, tx, tz, dt, mul, near); // planner busy this step
+    u.pathCd = 1;
+    u.repath = false;
+    if (!p.cells.length) { u.path = null; return d < near + 1.2 ? true : 'stuck'; }
+    u.path = p.cells; u.partial = p.partial; u.pi = 0; u.pgx = gx; u.pgz = gz;
+  }
+  while (u.pi < u.path.length) {
+    const c = u.path[u.pi];
+    if (Math.hypot(c % W + 0.5 - u.x, ((c / W) | 0) + 0.5 - u.z) < 0.45) u.pi++;
+    else break;
+  }
+  if (u.pi >= u.path.length) {
+    u.path = null;
+    if (u.partial) { u.pathCd = 0; return false; } // keep going: plan the next leg
+    return d < near + 1.2 ? true : 'stuck';
+  }
+  const c = u.path[u.pi];
+  const r = moveToward(u, c % W + 0.5, ((c / W) | 0) + 0.5, dt, mul, 0.05);
+  if (r === 'stuck') {
+    u.stuck = 0;
+    u.repath = true;
+    if (++u.fails > 3) { u.fails = 0; u.path = null; return 'stuck'; }
+  }
+  return false;
+}
+
 function faceToward(u, x, z, dt) {
   u.face = lerpAngle(u.face, Math.atan2(z - u.z, x - u.x), Math.min(1, dt * 10));
 }
@@ -203,8 +342,10 @@ function decide(u) {
     }
   }
   if (u.role === 'villager') {
-    const site = n.site;
-    if (site && !site.dead && !site.built && site.builders.size < 3) {
+    let site = null;
+    const crew = 3 + Math.floor(game.prosperity / 5);
+    for (const st of n.sites) if (!st.dead && !st.built && st.builders.size < crew) { site = st; break; }
+    if (site) {
       setState(u, 'build', site);
       site.builders.add(u);
       return;
@@ -217,8 +358,11 @@ function decide(u) {
   const [hx, hz] = homePoint(u);
   const r = u.role === 'king' ? 5 : u.role === 'soldier' ? 9 : 13;
   setState(u, 'goto');
-  u.tx = hx + rand(-r, r);
-  u.tz = hz + rand(-r, r);
+  for (let k = 0; k < 6; k++) {
+    u.tx = hx + rand(-r, r);
+    u.tz = hz + rand(-r, r);
+    if (groundTop(Math.floor(u.tx), Math.floor(u.tz)) > SEA) break;
+  }
   u.think = rand(1, 4);
 }
 
@@ -250,7 +394,7 @@ function act(u, dt) {
   switch (u.state) {
     case 'goto':
     case 'flee': {
-      const r = moveToward(u, u.tx, u.tz, dt, u.state === 'flee' ? 1.35 : 1);
+      const r = navigate(u, u.tx, u.tz, dt, u.state === 'flee' ? 1.35 : 1);
       if (r) { setState(u, 'idle'); u.think = rand(0.5, 2.5); }
       break;
     }
@@ -259,7 +403,7 @@ function act(u, dt) {
       if (!s || s.dead) { setState(u, 'idle'); break; }
       const d = dist(u, s.x + 0.5, s.z + 0.5);
       if (u.timer === 0) {
-        const r = moveToward(u, s.x + 0.5, s.z + 0.5, dt, 1, 1.6);
+        const r = navigate(u, s.x + 0.5, s.z + 0.5, dt, 1, 1.6);
         if (r === false) break;
         if (r === 'stuck' && d > 2.8) { setState(u, 'idle'); break; }
       }
@@ -267,7 +411,7 @@ function act(u, dt) {
       const before = Math.floor(u.timer * 1.6);
       u.timer += dt;
       if (Math.floor(u.timer * 1.6) !== before) { u.swing = 1; sparks(s.x + 0.5, u.y + 0.8, s.z + 0.5, 3); }
-      if (u.timer >= 3) { chopTree(s, u.nation); setState(u, 'idle'); u.think = 0.3; }
+      if (u.timer >= 3 / game.prosperity) { chopTree(s, u.nation); setState(u, 'idle'); u.think = 0.3; }
       break;
     }
     case 'build': {
@@ -276,16 +420,17 @@ function act(u, dt) {
       const tx = s.x0 + 3.5, tz = s.z0 + 0.5;
       const d = dist(u, tx, tz);
       if (u.timer === 0 && d > 3.5) {
-        const r = moveToward(u, tx, tz, dt, 1, 3.5);
+        const r = navigate(u, tx, tz, dt, 1, 3.5);
         if (r === false) break;
         if (r === 'stuck' && d > 7) { setState(u, 'idle'); break; }
       }
       faceToward(u, s.cx, s.cz, dt);
       u.timer += dt;
-      if (u.timer > 0.5) {
-        u.timer -= 0.14;
+      const iv = 0.14 / game.prosperity;
+      for (let k = 0; k < 400 && u.timer > 0.5; k++) {
+        u.timer -= iv;
         u.swing = Math.max(u.swing, 0.6);
-        if (!placeNext(s)) { setState(u, 'idle'); u.think = 0.5; }
+        if (!placeNext(s)) { setState(u, 'idle'); u.think = 0.5; break; }
       }
       break;
     }
@@ -296,7 +441,7 @@ function act(u, dt) {
       const range = ranged ? u.st.bow : u.st.range;
       const d = dist(u, t.x, t.z);
       if (d > range) {
-        const r = moveToward(u, t.x, t.z, dt, 1.15, range * 0.9);
+        const r = navigate(u, t.x, t.z, dt, 1.15, range * 0.9);
         if (r === 'stuck') { setState(u, 'idle'); u.think = 0.5; }
         break;
       }
@@ -320,7 +465,7 @@ function act(u, dt) {
       }
       const d = dist(u, s.cx, s.cz);
       if (u.timer === 0 && d > 4.2) {
-        const r = moveToward(u, s.cx, s.cz, dt, 1, 4.2);
+        const r = navigate(u, s.cx, s.cz, dt, 1, 4.2);
         if (r === false) break;
         if (r === 'stuck' && d > 7.5) { setState(u, 'idle'); break; }
       }
@@ -379,6 +524,7 @@ function flyUpdate(u, dt) {
 }
 
 export function updateUnits(dt) {
+  pathBudget = 10;
   for (const u of units) {
     if (!u.alive) continue;
     u.cd -= dt;

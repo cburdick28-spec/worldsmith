@@ -5,7 +5,10 @@ import { initUnitMeshes, updateUnits, renderUnits } from './units.js';
 import { setupNations, updateNations, nations } from './nations.js';
 import { GodCam } from './camera.js';
 import { TOOLS, initPowers, updatePowers, setTool, setSpeed, isPossessing, input } from './powers.js';
-import { initUI, updateUI } from './ui.js';
+import { initUI, updateUI, setProsperityUI } from './ui.js';
+import { game } from './nations.js';
+
+function setProsperity(p) { game.prosperity = p; setProsperityUI(p); }
 
 const params = new URLSearchParams(location.search);
 const seed = +params.get('seed') || Math.floor(Math.random() * 1e9);
@@ -49,7 +52,7 @@ initUnitMeshes(scene);
 
 const godCam = new GodCam(camera);
 initPowers({ camera, godCam, canvas: renderer.domElement, scene });
-initUI(TOOLS, setTool, setSpeed, () => { location.search = `?seed=${Math.floor(Math.random() * 1e9)}`; });
+initUI(TOOLS, setTool, setSpeed, setProsperity, () => { location.search = `?seed=${Math.floor(Math.random() * 1e9)}`; });
 setupNations();
 godCam.focus(nations.reduce((a, n) => a + n.capital.x, 0) / nations.length, nations.reduce((a, n) => a + n.capital.z, 0) / nations.length);
 godCam.goal.dist = godCam.dist = 85;
@@ -70,9 +73,13 @@ function frame() {
   const simDt = dt * input.speed;
   time += dt;
   if (simDt > 0) {
-    updateNations(simDt);
-    updateUnits(simDt);
-    updateEffects(simDt);
+    // small fixed substeps keep movement and collisions stable at high speed
+    const steps = Math.ceil(simDt / 0.05), h = simDt / steps;
+    for (let i = 0; i < steps; i++) {
+      updateNations(h);
+      updateUnits(h);
+      updateEffects(h);
+    }
   }
   updatePowers(dt, simDt, time);
   if (!isPossessing()) godCam.update(dt, input.keys, fx.shake);

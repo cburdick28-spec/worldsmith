@@ -1,5 +1,5 @@
 // DOM overlay: nations panel, chronicle, toolbar, tooltips and the possession HUD.
-import { nations, game, capacity, nm } from './nations.js';
+import { nations, game, capacity, nm, giftWood, blessPeople } from './nations.js';
 import { units } from './units.js';
 
 const $ = id => document.getElementById(id);
@@ -16,7 +16,7 @@ export function log(html) {
   while (box.children.length > 60) box.lastChild.remove();
 }
 
-export function initUI(tools, onTool, onSpeed, onNew) {
+export function initUI(tools, onTool, onSpeed, onProsperity, onNew) {
   const bar = $('toolbar');
   for (const t of tools) {
     const b = document.createElement('button');
@@ -28,6 +28,17 @@ export function initUI(tools, onTool, onSpeed, onNew) {
     bar.appendChild(b);
   }
   document.querySelectorAll('[data-speed]').forEach(b => { b.onclick = () => onSpeed(+b.dataset.speed); });
+  document.querySelectorAll('[data-pros]').forEach(b => { b.onclick = () => onProsperity(+b.dataset.pros); });
+  // nation cards are re-rendered constantly, so listen on the container
+  $('nations').addEventListener('pointerdown', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const n = nations.find(m => m.id === +b.dataset.nid && m.alive);
+    if (!n) return;
+    if (b.dataset.act === 'wood') { giftWood(n, 100); toast(`+100 wood for ${n.name}`); }
+    if (b.dataset.act === 'people') { const k = blessPeople(n, 5); toast(k ? `${k} new souls join ${n.name}` : 'The world is full.'); }
+    updateUI();
+  });
   $('new-world').onclick = onNew;
   $('begin').onclick = () => $('intro').classList.add('gone');
   ready = true;
@@ -37,6 +48,10 @@ export function initUI(tools, onTool, onSpeed, onNew) {
 export function setToolUI(tool) {
   document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.id === tool.id));
   $('hint').innerHTML = `<b>${tool.icon} ${tool.name}</b><br>${tool.hint}`;
+}
+
+export function setProsperityUI(p) {
+  document.querySelectorAll('[data-pros]').forEach(b => b.classList.toggle('on', +b.dataset.pros === p));
 }
 
 export function setSpeedUI(s) {
@@ -65,6 +80,7 @@ export function updateUI() {
       <div class="king">👑 ${k ? `${n.R.ruler} ${k.name}, age ${k.age}` : '<i>no ruler</i>'}</div>
       <div class="stats"><span title="Population / housing">👥 ${n.units.size}/${capacity(n)}</span><span title="Soldiers">🗡 ${soldiers}</span><span title="Houses">🏠 ${n.houses.length}</span><span title="Wood">🪵 ${n.wood}</span></div>
       <div class="rel">${relText(n)}</div>
+      <div class="gifts"><button data-act="wood" data-nid="${n.id}" title="Gift 100 wood">+100 🪵</button><button data-act="people" data-nid="${n.id}" title="Bless with 5 new villagers">+5 👥</button></div>
     </div>`;
   }).join('') || '<div class="nation"><i>No nations remain. Use a spawn tool to begin anew.</i></div>';
 }

@@ -2,7 +2,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { W, D, H, SEA, WATER_Y, B, BLOCK, raycast, get, set, solid, topAt, owner, idx, structs, removeStruct, colOcc, isWaterCol } from './world.js';
 import { units, pickUnit, setState, standY, groundUnder, damageUnit, spawnUnit } from './units.js';
-import { nations, createNation, detachHouse, nm } from './nations.js';
+import { nations, createNation, detachHouse, nm, giftWood } from './nations.js';
 import { explode, launchMeteor, lightning, igniteArea, spawnDebris, splash, sparks, debrisRoom, leafBurst } from './effects.js';
 import * as ui from './ui.js';
 import { rand } from './noise.js';
@@ -18,9 +18,10 @@ export const TOOLS = [
   { id: 'human', key: '7', icon: '🛡️', name: 'Humans', hint: 'Place humans. Far from their kingdom, or once it has fallen, they found a new one.' },
   { id: 'goblin', key: '8', icon: '👺', name: 'Goblins', hint: 'Place goblins. Far from their horde, or once it has fallen, they found a new one.' },
   { id: 'elf', key: '9', icon: '🌿', name: 'Elves', hint: 'Place elves. Far from their realm, or once it has fallen, they found a new one.' },
+  { id: 'gift', key: 'G', icon: '🪵', name: 'Gift of Wood', hint: 'Rain timber on a nation: the closest one gets +60 wood per click. Hold to keep it coming.', rate: 0.15 },
   { id: 'possess', key: '0', icon: '👁️', name: 'Possess', hint: 'Click a person to walk in their body. WASD move, mouse look, Space jump, click strike, right-click build, Esc leave.' },
 ];
-const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess' };
+const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess', KeyG: 'gift' };
 
 export const input = { keys: {}, speed: 1, lastSpeed: 1 };
 let tool = TOOLS[1];
@@ -100,7 +101,7 @@ function structBox(s) {
   return x0 === Infinity ? null : [x0, y0, z0, x1, y1, z1];
 }
 
-const RING = { meteor: 6, lightning: 2, fire: 2.2, raise: 2.6, lower: 2.6, human: 1.6, goblin: 1.6, elf: 1.6 };
+const RING = { gift: 2, meteor: 6, lightning: 2, fire: 2.2, raise: 2.6, lower: 2.6, human: 1.6, goblin: 1.6, elf: 1.6 };
 
 function updateIndicators() {
   ringMesh.visible = false;
@@ -169,6 +170,21 @@ function primary(start) {
     case 'human': case 'goblin': case 'elf':
       if (start) spawnPeople(tool.id);
       break;
+    case 'gift': {
+      if (!h.point) return;
+      let n = null, bd = Infinity;
+      for (const m of nations) {
+        if (!m.alive) continue;
+        const d = Math.hypot(m.capital.x - h.point.x, m.capital.z - h.point.z);
+        if (d < bd) { bd = d; n = m; }
+      }
+      if (!n) { ui.toast('There is no nation to receive your gift.'); return; }
+      giftWood(n, 60);
+      for (let i = 0; i < 5; i++) spawnDebris(h.point.x + rand(-2, 2), h.point.y + rand(8, 14), h.point.z + rand(-2, 2), rand(-1, 1), rand(-2, 0), rand(-1, 1), B.LOG, 0);
+      sparks(h.point.x, h.point.y + 1, h.point.z, 14);
+      if (start) ui.toast(`+60 wood for ${n.name}`);
+      break;
+    }
     case 'possess':
       if (!start) return;
       if (h.unit) enterPossess(h.unit);
@@ -542,6 +558,9 @@ export function initPowers(opts) {
     if (poss) { if (e.code === 'Space') e.preventDefault(); return; }
     if (KEYMAP[e.code]) setTool(KEYMAP[e.code]);
     if (e.code === 'Space') { e.preventDefault(); setSpeed(input.speed ? 0 : input.lastSpeed); }
+    const SPEEDS = [0, 1, 2, 4, 10];
+    if (e.code === 'Equal' || e.code === 'BracketRight') setSpeed(SPEEDS[Math.min(4, SPEEDS.indexOf(input.speed) + 1)]);
+    if (e.code === 'Minus' || e.code === 'BracketLeft') setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(input.speed) - 1)]);
     if (e.code === 'KeyF' && selected && selected.alive) godCam.focus(selected.x, selected.z);
   });
   window.addEventListener('keyup', e => { input.keys[e.code] = false; });
@@ -559,7 +578,7 @@ export function updatePowers(dt, simDt, time) {
     }
   }
   updateHeld(dt, time);
-  updateProjectiles(simDt);
+  for (let left = simDt; left > 1e-6; left -= 0.05) updateProjectiles(Math.min(0.05, left));
   updateIndicators();
   updateTooltip();
   if (selected) {

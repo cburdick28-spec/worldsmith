@@ -63,6 +63,9 @@
   .king { margin-top: 3px; }
   .stats { display: flex; gap: 10px; margin-top: 3px; font-variant-numeric: tabular-nums; }
   .rel { margin-top: 3px; font-size: 12px; }
+  .gifts { display: flex; gap: 4px; margin-top: 5px; }
+  .gifts button { font-size: 11px; padding: 1px 7px; }
+  .lbl { align-self: center; margin-right: 2px; }
   .war { color: var(--war); } .ally { color: var(--ally); } .peace { color: var(--dim); }
 
   #chronicle {
@@ -155,6 +158,14 @@
     <button data-speed="1">1×</button>
     <button data-speed="2">2×</button>
     <button data-speed="4">4×</button>
+    <button data-speed="10">10×</button>
+  </div>
+  <div class="speed" title="Prosperity: how fast every nation grows, gathers and builds">
+    <span class="lbl">🌾</span>
+    <button data-pros="1" class="on">1×</button>
+    <button data-pros="3">3×</button>
+    <button data-pros="10">10×</button>
+    <button data-pros="50">50×</button>
   </div>
   <button id="new-world" title="Generate a new world">New world</button>
   <span id="seed"></span>
@@ -172,7 +183,7 @@
   <div id="inspect" class="panel"></div>
   <div class="controls panel">
     <b>Camera</b>: right-drag rotate · middle-drag or Shift-drag pan · WASD move · Q/E turn · wheel zoom<br>
-    <b>Keys</b>: 1–9, 0 and ` pick powers · Space pause
+    <b>Keys</b>: 1–9, 0, ` and G pick powers · Space pause · − / = change speed<br><b>🌾 Prosperity</b> speeds up births, chopping and building for every nation
   </div>
 </div>
 
