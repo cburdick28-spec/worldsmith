@@ -9,7 +9,8 @@ Make Worldsmith feel more like Theoria, a stylized god sim where you wreck a liv
 world. This sub-project covers two things:
 
 1. Replace box-built buildings and people with real 3D models.
-2. Add the first new god power, a tidal wave.
+2. Add new god powers, starting with a tidal wave, then hurling buildings, earthquake,
+   tornado and volcano.
 
 Out of scope here, planned as later sub-projects: dragon form and aircraft (2),
 roads, villages and kingdom politics (3), voxel look and persistent-destruction
@@ -85,12 +86,32 @@ intact, or it shatters. Persistent block-level destruction returns in sub-projec
 - Water surfaces and spray live in `effects.js`, reusing the existing splash code.
 - Buildings in its path take damage and shatter if they cross the threshold in section 2.
 
+### 5. More god powers
+
+Each of these is independent and can be cut without affecting the others. They are
+ordered by how much they reuse existing code.
+
+- **Hurl a building.** The Hand of God can grab a whole house model and throw it. On
+  impact it shatters into its pieces (section 2) and damages whatever it lands on.
+  Builds directly on the shatter system, so it comes first.
+- **Earthquake.** Hold to shake the world: the camera trembles, terrain blocks crack
+  and drop, and houses in the zone take damage and shatter. Uses existing `set()` voxel
+  edits for the terrain.
+- **Tornado.** A moving funnel you place and steer. It lifts people and loose fragments
+  into the air and flings them out, reusing the throw physics from the Hand of God.
+- **Volcano.** Click to raise a cone of terrain that erupts, firing lava bombs that use
+  the meteor and fire effects and leave burning ground.
+
+The existing powers (meteor, lightning, wildfire, raise and lower land) stay as they
+are, apart from interacting with the new building models.
+
 ## Build order
 
 1. Asset layer with fallbacks, plus importmap and vendored loaders.
 2. People.
 3. Buildings and shatter.
 4. Tidal wave.
+5. Hurl a building, then earthquake, tornado and volcano, each shippable on its own.
 
 Each step ends with the game still running.
 
