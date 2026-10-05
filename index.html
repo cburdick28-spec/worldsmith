@@ -79,8 +79,8 @@
   @keyframes fadein { from { opacity: 0; transform: translateX(-6px); } }
 
   #toolbar {
-    position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
-    display: flex; gap: 4px; padding: 6px;
+    position: fixed; bottom: 12px; left: 404px; right: 12px;
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding: 6px; width: fit-content; margin: 0 auto;
   }
   .tool {
     position: relative; width: 58px; height: 58px; padding: 0;
@@ -141,7 +141,7 @@
   @media (max-width: 900px) {
     #nations, #side .controls { display: none; }
     #chronicle { width: calc(100vw - 24px); height: 120px; bottom: 84px; }
-    #toolbar { left: 12px; right: 12px; transform: none; overflow-x: auto; }
+    #toolbar { left: 12px; right: 12px; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; width: auto; }
     #side { width: 200px; }
   }
 </style>
@@ -183,7 +183,7 @@
   <div id="inspect" class="panel"></div>
   <div class="controls panel">
     <b>Camera</b>: right-drag rotate · middle-drag or Shift-drag pan · WASD move · Q/E turn · wheel zoom<br>
-    <b>Keys</b>: 1–9, 0, ` and G pick powers · Space pause · − / = change speed<br><b>🌾 Prosperity</b> speeds up births, chopping and building for every nation
+    <b>Keys</b>: 1–9, 0, `, G, T, Y, U, I and H pick powers · Space pause · − / = change speed<br><b>🌾 Prosperity</b> speeds up births, chopping and building for every nation
   </div>
 </div>
 

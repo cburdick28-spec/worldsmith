@@ -6,6 +6,7 @@ import { leafBurst, spawnDebris } from './effects.js';
 import { log } from './ui.js';
 import { rand, pick } from './noise.js';
 import { updateInfra, noteBlocked } from './infra.js';
+import { updateDisasters } from './disasters.js';
 import { updateRaids, assignEscort, raidStats } from './raids.js';
 import { initEconomy, seedFarm, updateEconomy, economyBuild, updateWorldEconomy, pickCargo, settleTrade, lawWar, warMult, GOODS } from './economy.js';
 
@@ -201,6 +202,7 @@ const DEATHS = {
   drown: () => 'drowned',
   fall: () => 'fell to their death',
   hunger: () => 'starved',
+  plague: () => 'died of the plague',
 };
 
 export function onUnitDeath(u, cause, by) {
@@ -474,6 +476,7 @@ export function updateNations(dt) {
   updateWorldEconomy(dt);
   updateRaids(dt);
   updateInfra(dt);
+  updateDisasters(dt);
   dipT += dt;
   if (dipT >= 1.5) { diplomacy(dipT); dipT = 0; }
   processDamaged();

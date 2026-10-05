@@ -8,7 +8,7 @@ export const WATER_Y = SEA + 0.85;
 
 export const B = {
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, SAND: 4, SNOW: 5, LOG: 6, LEAVES: 7, PLANK: 8,
-  MUD: 9, MARBLE: 10, ROOF_H: 11, ROOF_G: 12, ROOF_E: 13, SCORCH: 14, PINE: 15, GOLD: 16, ROAD: 17, FARM: 18, WHEAT: 19, WHEAT_RIPE: 20,
+  MUD: 9, MARBLE: 10, ROOF_H: 11, ROOF_G: 12, ROOF_E: 13, SCORCH: 14, PINE: 15, GOLD: 16, ROAD: 17, FARM: 18, WHEAT: 19, WHEAT_RIPE: 20, LAVA: 21, BASALT: 22,
 };
 
 // flam: chance per fire tick to spread into this block; burn: seconds it burns for
@@ -33,6 +33,8 @@ def(B.SCORCH, '#35302c');
 def(B.PINE, '#2f6b3a', null, 0.22, 2.5);
 def(B.GOLD, '#f2c443');
 def(B.ROAD, '#94724a', '#6e5333'); // packed dirt, worn in by foot traffic (see roads.js)
+def(B.LAVA, '#ff6a1a', '#e2480f');   // molten rock from volcanoes
+def(B.BASALT, '#3b3a42', '#2c2b33'); // cooled lava
 def(B.FARM, '#5b3d22', '#4a321c');   // tilled soil
 def(B.WHEAT, '#86b83c', '#6c9a2e', 0.2, 2);
 def(B.WHEAT_RIPE, '#e6b93a', '#c99a2a', 0.2, 2);

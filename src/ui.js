@@ -71,7 +71,7 @@ function relText(n) {
 
 export function updateUI() {
   $('year').textContent = `Year ${game.year}`;
-  $('pop').textContent = `${eraState.era.name} · ${units.length} souls · ${Math.max(0, roadStats.tiles)} road tiles · 🌉 ${infra.bridges.length} · 🏨 ${infra.inns.length}`;
+  $('pop').textContent = `${eraState.era.name} · ${units.length} souls · 🛣 ${Math.max(0, roadStats.tiles)} · 🌉 ${infra.bridges.length} · 🏨 ${infra.inns.length}`;
   const list = $('nations');
   const alive = nations.filter(n => n.alive);
   list.innerHTML = alive.map(n => {

@@ -326,6 +326,23 @@ export function leafBurst(x, y, z, n = 30, color = '#47923a') {
   for (let i = 0; i < n; i++) dustPool.spawn(x + rand(-2, 2), y + rand(-1, 2), z + rand(-2, 2), rand(-1.5, 1.5), rand(0, 2), rand(-1.5, 1.5), rand(1, 2), c, c, 3, 1.5, 1);
 }
 
+// helpers used by disasters.js
+export function smokeColumn(x, y, z, n = 6) {
+  for (let i = 0; i < n; i++) smokePool.spawn(x + rand(-1.5, 1.5), y, z + rand(-1.5, 1.5), rand(-1, 1), rand(3, 7), rand(-1, 1), rand(2.5, 4.5), COL.smokeA, COL.smokeB, -0.3, 0.3, 0.55);
+}
+export function lavaSpray(x, y, z, n = 10, up = 6) {
+  for (let i = 0; i < n; i++) firePool.spawn(x + rand(-0.4, 0.4), y, z + rand(-0.4, 0.4), rand(-3, 3), rand(up * 0.3, up), rand(-3, 3), rand(0.4, 0.9), COL.fireA, COL.fireB, 9, 0.4, 1);
+}
+export function dustCloud(x, y, z, n = 10, spread = 3) {
+  for (let i = 0; i < n; i++) dustPool.spawn(x + rand(-spread, spread), y, z + rand(-spread, spread), rand(-1.5, 1.5), rand(1, 4), rand(-1.5, 1.5), rand(0.8, 1.6), COL.dust, COL.dustB, 2, 1, 0.8);
+}
+const SICKA = new THREE.Color('#9ad24a'), SICKB = new THREE.Color('#3f5a1c');
+export function sickPuff(x, y, z) {
+  dustPool.spawn(x + rand(-0.3, 0.3), y, z + rand(-0.3, 0.3), rand(-0.4, 0.4), rand(0.8, 1.6), rand(-0.4, 0.4), rand(0.8, 1.3), SICKA, SICKB, -0.5, 0.6, 0.9);
+}
+export function glow(x, y, z, color, intensity) { flash(x, y, z, color, intensity); }
+export function shockRing(x, y, z, size) { ring(x, y, z, size); }
+
 export function arrow(x0, y0, z0, x1, y1, z1) {
   const n = 8;
   for (let i = 0; i < n; i++) {

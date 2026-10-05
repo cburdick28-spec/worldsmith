@@ -661,6 +661,7 @@ const rig = {};
 const GOLD = new THREE.Color('#f2c443');
 const PACK = new THREE.Color('#c9a15f');
 const BANDIT = new THREE.Color('#3a3330');
+const SICK = new THREE.Color('#7fa83a');
 const tmpC = new THREE.Color();
 
 export function initUnitMeshes(scene) {
@@ -722,6 +723,7 @@ export function renderUnits(time) {
     M.leg.setMatrixAt(nl, r.legR.matrixWorld); M.leg.setColorAt(nl++, st.legsC);
     M.body.setMatrixAt(nu, r.body.matrixWorld);
     tmpC.copy(u.role === 'raider' ? BANDIT : isMil(u) ? n.armor : n.color);
+    if (u.plague > 0) tmpC.lerp(SICK, 0.6);
     if (u.onFire > 0 && (time * 10 | 0) % 2) tmpC.lerp(GOLD, 0.6);
     M.body.setColorAt(nu, tmpC);
     M.head.setMatrixAt(nu, r.head.matrixWorld); M.head.setColorAt(nu, st.skinC);

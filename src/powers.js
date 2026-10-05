@@ -5,6 +5,7 @@ import { units, pickUnit, setState, standY, groundUnder, damageUnit, spawnUnit }
 import { nations, createNation, detachHouse, nm, giftWood } from './nations.js';
 import { explode, launchMeteor, lightning, igniteArea, spawnDebris, splash, sparks, debrisRoom, leafBurst } from './effects.js';
 import * as ui from './ui.js';
+import { startEarthquake, startPlague, startFlood, startVolcano, blessHarvest } from './disasters.js';
 import { rand } from './noise.js';
 
 export const TOOLS = [
@@ -19,9 +20,14 @@ export const TOOLS = [
   { id: 'goblin', key: '8', icon: '👺', name: 'Goblins', hint: 'Place goblins. Far from their horde, or once it has fallen, they found a new one.' },
   { id: 'elf', key: '9', icon: '🌿', name: 'Elves', hint: 'Place elves. Far from their realm, or once it has fallen, they found a new one.' },
   { id: 'gift', key: 'G', icon: '🪵', name: 'Gift of Wood', hint: 'Rain timber on a nation: the closest one gets +60 wood per click. Hold to keep it coming.', rate: 0.15 },
+  { id: 'quake', key: 'T', icon: '🌋', name: 'Earthquake', hint: 'Split the earth: fissures swallow ground and crack houses open.' },
+  { id: 'plague', key: 'Y', icon: '☠️', name: 'Plague', hint: 'Sicken the people nearby. It spreads from person to person and rides along with caravans.' },
+  { id: 'flood', key: 'U', icon: '🌊', name: 'Flood', hint: 'A great wave drowns the lowlands and sweeps away whatever stands there. The land stays under water.' },
+  { id: 'volcano', key: 'I', icon: '🗻', name: 'Volcano', hint: 'Raise a volcano on dry land. It erupts with lava bombs and erupts again every few decades.' },
+  { id: 'harvest', key: 'H', icon: '🌾', name: 'Harvest', hint: 'Ripen the closest nation\'s fields and bless its harvest. Hold to keep blessing.', rate: 0.9 },
   { id: 'possess', key: '0', icon: '👁️', name: 'Possess', hint: 'Click a person to walk in their body. WASD move, mouse look, Space jump, click strike, right-click build, Esc leave.' },
 ];
-const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess', KeyG: 'gift' };
+const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess', KeyG: 'gift', KeyT: 'quake', KeyY: 'plague', KeyU: 'flood', KeyI: 'volcano', KeyH: 'harvest' };
 
 export const input = { keys: {}, speed: 1, lastSpeed: 1 };
 let tool = TOOLS[1];
@@ -101,7 +107,7 @@ function structBox(s) {
   return x0 === Infinity ? null : [x0, y0, z0, x1, y1, z1];
 }
 
-const RING = { gift: 2, meteor: 6, lightning: 2, fire: 2.2, raise: 2.6, lower: 2.6, human: 1.6, goblin: 1.6, elf: 1.6 };
+const RING = { gift: 2, meteor: 6, lightning: 2, fire: 2.2, raise: 2.6, lower: 2.6, human: 1.6, goblin: 1.6, elf: 1.6, quake: 15, plague: 7, flood: 15, volcano: 8, harvest: 3 };
 
 function updateIndicators() {
   ringMesh.visible = false;
@@ -183,6 +189,26 @@ function primary(start) {
       for (let i = 0; i < 5; i++) spawnDebris(h.point.x + rand(-2, 2), h.point.y + rand(8, 14), h.point.z + rand(-2, 2), rand(-1, 1), rand(-2, 0), rand(-1, 1), B.LOG, 0);
       sparks(h.point.x, h.point.y + 1, h.point.z, 14);
       if (start) ui.toast(`+60 wood for ${n.name}`);
+      break;
+    }
+    case 'quake':
+      if (start && h.point) startEarthquake(h.point.x, h.point.z);
+      break;
+    case 'plague':
+      if (start && h.point && !startPlague(h.point.x, h.point.z)) ui.toast('There is no one here to infect.');
+      break;
+    case 'flood':
+      if (start && h.point) startFlood(h.point.x, h.point.z);
+      break;
+    case 'volcano':
+      if (start && h.point && !startVolcano(h.point.x, h.point.z)) ui.toast('A volcano needs dry land (and there can only be four).');
+      break;
+    case 'harvest': {
+      if (!h.point) return;
+      const n = blessHarvest(h.point.x, h.point.z);
+      if (!n) { ui.toast('There is no nation to bless.'); return; }
+      sparks(h.point.x, h.point.y + 1, h.point.z, 14);
+      if (start) ui.toast(`${n.name}'s fields ripen`);
       break;
     }
     case 'possess':
