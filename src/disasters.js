@@ -6,6 +6,7 @@ import { nations, nm, YEAR } from './nations.js';
 import { startCrisis } from './economy.js';
 import { fx, spawnDebris, igniteArea, smokeColumn, lavaSpray, dustCloud, sickPuff, splash, glow, shockRing, leafBurst } from './effects.js';
 import { log } from './ui.js';
+import { sfx } from './audio.js';
 import { rand } from './noise.js';
 
 export const disasterStats = { quakes: 0, floods: 0, volcanoes: 0, plagueDeaths: 0, plagueSick: 0 };
@@ -51,6 +52,7 @@ export function startEarthquake(x, z) {
     }
   }
   quakes.push({ x, z, R, t: 5, tick: 0, fis, fi: 0 });
+  sfx('rumble', x, z, 1.5);
   disasterStats.quakes++;
   const n = nationNear(x, z, 30);
   log(`🌋 The earth splits${n ? ` beneath ${nm(n)}` : ''}: an earthquake!`);
@@ -59,6 +61,7 @@ export function startEarthquake(x, z) {
 function tickQuake(q, dt) {
   q.t -= dt;
   fx.shake = Math.max(fx.shake, 1.3);
+  sfx('rumble', q.x, q.z, 1.5);
   q.tick -= dt;
   if (q.tick > 0) return;
   q.tick = 0.12;
@@ -90,6 +93,7 @@ const floods = [];
 
 export function startFlood(x, z) {
   floods.push({ x, z, R: 15, t: 0, dur: 5, done: new Set() });
+  sfx('roar', x, z, 1.4);
   disasterStats.floods++;
   const n = nationNear(x, z, 30);
   log(`🌊 A great flood sweeps the lowlands${n ? ` of ${nm(n)}` : ''}.`);
@@ -176,6 +180,7 @@ function eruption(v, secs) {
   v.bt = 0;
   log(`🌋 The volcano near ${nationNear(v.x, v.z, 40) ? nm(nationNear(v.x, v.z, 40)) : 'the wilds'} erupts!`);
   glow(v.x + 0.5, v.base + v.h + 4, v.z + 0.5, 0xff7a30, 20000);
+  sfx('boom', v.x, v.z, 2.2);
   shockRing(v.x + 0.5, v.base + v.h, v.z + 0.5, 28);
 }
 
@@ -198,6 +203,7 @@ function tickVolcano(v, dt) {
   if (v.state === 'erupting') {
     v.erupt -= dt;
     fx.shake = Math.max(fx.shake, 0.7);
+    sfx('rumble', v.x, v.z, 1.2);
     v.bt -= dt;
     if (v.bt <= 0) { v.bt = 0.3; for (let k = 0; k < 2 + (Math.random() < 0.5 ? 1 : 0); k++) throwBomb(v, v.small); }
     smokeColumn(v.x + 0.5, top + 1, v.z + 0.5, 3);
@@ -268,6 +274,7 @@ export function startPlague(x, z) {
   plagueNations.clear();
   plagueNations.add(near[0].nation);
   log(`☠️ A plague breaks out among the people of ${nm(near[0].nation)}.`);
+  sfx('toll', x, z);
   return near.length;
 }
 
@@ -330,4 +337,21 @@ export function updateDisasters(dt) {
   tickBombs(dt);
   tickLava(dt);
   tickPlague(dt);
+}
+
+// ---------- save / load ----------
+
+export function snapshotVolcanoes() {
+  return volcanoes.map(v => ({ ...v }));
+}
+
+export function restoreVolcanoes(list) {
+  volcanoes.length = 0; bombs.length = 0; lavaCool.length = 0; quakes.length = 0; floods.length = 0;
+  for (const v of list) volcanoes.push({ ...v });
+  // stray lava from bombs cools again; crater lava stays molten
+  for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    if (get(x, y, z) !== B.LAVA) continue;
+    if (volcanoes.some(v => Math.hypot(v.x - x, v.z - z) < 3 && y >= v.base + v.h - 4)) continue;
+    lavaCool.push({ x, y, z, t: rand(2, 8) });
+  }
 }

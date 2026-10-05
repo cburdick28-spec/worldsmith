@@ -2,6 +2,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { W, D, H, SEA, WATER_Y, B, BLOCK, get, set, solid, topAt, idx, inB, vox, isWaterCol } from './world.js';
 import { units, killUnit, damageUnit } from './units.js';
+import { sfx } from './audio.js';
 import { rand } from './noise.js';
 
 export const fx = { shake: 0 };
@@ -258,6 +259,7 @@ export function carve(cx, cy, cz, r) {
 }
 
 export function explode(x, y, z, r, opts = {}) {
+  sfx('boom', x, z, r / 3);
   const removed = carve(x, y, z, r);
   const step = Math.max(1, Math.floor(removed.length / 160));
   for (let i = 0; i < removed.length; i += step) {
@@ -303,6 +305,7 @@ export function explode(x, y, z, r, opts = {}) {
 }
 
 export function splash(x, z, n = 40) {
+  sfx('splash', x, z, n / 60);
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, s = rand(1, 6);
     dustPool.spawn(x, WATER_Y, z, Math.cos(a) * s, rand(6, 14), Math.sin(a) * s, rand(0.8, 1.4), COL.water, COL.waterB, 20, 0.5, 1);
@@ -380,6 +383,7 @@ const meteors = [];
 let meteorGeo, meteorMat;
 
 export function launchMeteor(tx, ty, tz) {
+  sfx('whoosh', tx, tz);
   const ang = Math.random() * Math.PI * 2;
   const from = new THREE.Vector3(tx + Math.cos(ang) * 45, ty + 85, tz + Math.sin(ang) * 45);
   const to = new THREE.Vector3(tx, ty, tz);
@@ -413,6 +417,7 @@ function updateMeteors(dt) {
 
 const bolts = [];
 export function lightning(tx, ty, tz) {
+  sfx('thunder', tx, tz);
   const pts = [];
   let x = tx + rand(-8, 8), z = tz + rand(-8, 8);
   const top = ty + 70, n = 18;
