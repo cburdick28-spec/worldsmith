@@ -8,7 +8,7 @@ export const WATER_Y = SEA + 0.85;
 
 export const B = {
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, SAND: 4, SNOW: 5, LOG: 6, LEAVES: 7, PLANK: 8,
-  MUD: 9, MARBLE: 10, ROOF_H: 11, ROOF_G: 12, ROOF_E: 13, SCORCH: 14, PINE: 15, GOLD: 16,
+  MUD: 9, MARBLE: 10, ROOF_H: 11, ROOF_G: 12, ROOF_E: 13, SCORCH: 14, PINE: 15, GOLD: 16, ROAD: 17,
 };
 
 // flam: chance per fire tick to spread into this block; burn: seconds it burns for
@@ -32,6 +32,7 @@ def(B.ROOF_E, '#9265d8');
 def(B.SCORCH, '#35302c');
 def(B.PINE, '#2f6b3a', null, 0.22, 2.5);
 def(B.GOLD, '#f2c443');
+def(B.ROAD, '#94724a', '#6e5333'); // packed dirt, worn in by foot traffic (see roads.js)
 
 export const vox = new Uint8Array(W * D * H);
 export const owner = new Int32Array(W * D * H);   // voxel -> structure id
