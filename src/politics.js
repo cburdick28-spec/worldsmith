@@ -10,7 +10,7 @@ import { rand, pick } from './noise.js';
 
 const SUFFIX = { human: 'Village', goblin: 'Warcamp', elf: 'Grove' };
 const TITLE = { human: 'Reeve', goblin: 'Chief', elf: 'Warden' };
-const MAX_NATIONS = 9;
+const MAX_NATIONS = 14;
 let polT = 0;
 
 export const vassalsOf = n => nations.filter(m => m.alive && m.liege === n);

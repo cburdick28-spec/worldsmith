@@ -9,6 +9,7 @@ import { updateRoads } from './roads.js';
 import { eraState } from './economy.js';
 import { initUI, updateUI, setProsperityUI, toast } from './ui.js';
 import { initMinimap, updateMinimap } from './minimap.js';
+import { initFauna, updateFauna } from './fauna.js';
 import { initDragons, updateDragons, updateRideCamera, isRiding } from './dragons.js';
 import { initAudio, updateAudio, setListener, setMuted, isMuted } from './audio.js';
 import { makeSnapshot, restoreSnapshot, encodeSnapshot, decodeSnapshot, saveToStorage, hasSave, readSave, queueLoad, takePendingLoad } from './save.js';
@@ -35,8 +36,8 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.getElementById('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xc4dcec, 170, 400);
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1000);
+scene.fog = new THREE.Fog(0xc4dcec, 230, 560);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1400);
 
 const hemi = new THREE.HemisphereLight(0xd8ecff, 0x6b5a45, 1.15);
 scene.add(hemi);
@@ -64,6 +65,7 @@ initChunks(scene);
 initEffects(scene);
 initUnitMeshes(scene);
 initDragons(scene);
+initFauna(scene);
 
 const godCam = new GodCam(camera);
 initPowers({ camera, godCam, canvas: renderer.domElement, scene });
@@ -122,6 +124,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+window.__ws = { godCam, camera, scene }; // handy for debugging and tests
 const clock = new THREE.Clock();
 let uiT = 0, time = 0;
 function frame() {
@@ -140,6 +143,7 @@ function frame() {
       updateDragons(h, time);
     }
   }
+  updateFauna(simDt, dt, time);
   updatePowers(dt, simDt, time);
   updateMinimap(dt);
   updateAudio(fireCount(), godCam.dist);
@@ -149,6 +153,12 @@ function frame() {
   rebuildDirty(14);
   renderUnits(time);
   updateVisuals(dt, simDt);
+  { // keep the shadow frustum over whatever the camera is looking at (the world is bigger than one frustum)
+    const f = isPossessing() || isRiding() ? camera.position : godCam.target;
+    const tx = Math.round(f.x), tz = Math.round(f.z);
+    sun.target.position.set(tx, 0, tz);
+    sun.position.set(tx - 70, 120, tz - 55);
+  }
   sun.color.copy(eraState.sun); sun.intensity = eraState.si;
   hemi.color.copy(eraState.hemi); hemi.intensity = eraState.hi;
   water.material.opacity = 0.76 + Math.sin(time * 0.8) * 0.03;

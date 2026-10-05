@@ -8,6 +8,7 @@ import * as ui from './ui.js';
 import { startEarthquake, startPlague, startFlood, startVolcano, blessHarvest } from './disasters.js';
 import { spawnDragon, rideDragon, nearestDragon, isRiding } from './dragons.js';
 import { rand } from './noise.js';
+import { civicHTML } from './buildings.js';
 
 export const TOOLS = [
   { id: 'inspect', key: '`', icon: '🔍', name: 'Inspect', hint: 'Click a person or building to learn about them.' },
@@ -135,6 +136,7 @@ function updateIndicators() {
 }
 
 function houseHTML(s) {
+  if (s.kind === 'civic') return civicHTML(s);
   const pct = Math.round(s.alive / Math.max(1, s.built ? s.total : s.placed) * 100);
   const who = s.nation ? nm(s.nation) : 'no one';
   return `<b>${s.capital ? 'Capital house' : 'House'}</b> of ${who}<br>${s.built ? `${pct}% intact` : `under construction · ${Math.round(s.placed / s.plan.length * 100)}%`}`;
@@ -143,7 +145,7 @@ function houseHTML(s) {
 function updateTooltip() {
   if (poss || held || isRiding()) { ui.hideTip(); return; }
   if (hover.unit) ui.showTip(mx, my, ui.unitHTML(hover.unit));
-  else if (hover.struct && hover.struct.kind === 'house' && (tool.id === 'inspect' || tool.id === 'grab')) ui.showTip(mx, my, houseHTML(hover.struct));
+  else if (hover.struct && (hover.struct.kind === 'house' || hover.struct.kind === 'civic') && (tool.id === 'inspect' || tool.id === 'grab')) ui.showTip(mx, my, houseHTML(hover.struct));
   else ui.hideTip();
 }
 
@@ -155,7 +157,7 @@ function primary(start) {
     case 'inspect':
       if (!start) return;
       if (h.unit) selected = h.unit;
-      else { selected = null; ui.inspect(h.struct && h.struct.kind === 'house' ? houseHTML(h.struct) : ''); }
+      else { selected = null; ui.inspect(h.struct && (h.struct.kind === 'house' || h.struct.kind === 'civic') ? houseHTML(h.struct) : ''); }
       break;
     case 'grab':
       if (start) beginGrab();

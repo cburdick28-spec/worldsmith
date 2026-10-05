@@ -93,7 +93,7 @@ function burst(type, f0, f1, dur, vol, q = 0.7) {
   s.start(t0, Math.random()); s.stop(t0 + dur + 0.05);
 }
 
-const GAP = { clash: 0.09, death: 0.15, boom: 0.12, splash: 0.12, thunder: 0.3, whoosh: 0.3, rumble: 0.6, bell: 0.4, horn: 1, chime: 1, toll: 1, roar: 1 };
+const GAP = { clash: 0.09, death: 0.15, boom: 0.12, splash: 0.12, thunder: 0.3, whoosh: 0.3, rumble: 0.6, bell: 0.4, build: 0.5, horn: 1, chime: 1, toll: 1, roar: 1 };
 
 // Positional one-shot: quieter with distance from the listener, skipped when inaudible.
 export function sfx(name, x, z, size = 1) {
@@ -134,6 +134,7 @@ export function sfx(name, x, z, size = 1) {
     case 'chime':
       tone(523, 523, 1.2, 0.12 * v, 'sine'); tone(659, 659, 1.2, 0.1 * v, 'sine', now + 0.15); tone(784, 784, 1.4, 0.1 * v, 'sine', now + 0.3);
       break;
+    case 'build': tone(220, 200, 0.12, 0.12 * v, 'square'); tone(330, 300, 0.12, 0.1 * v, 'square', now + 0.13); burst('bandpass', 1800, 900, 0.2, 0.2 * v, 3); break;
     case 'toll': tone(147, 140, 1.8, 0.2 * v, 'sine'); tone(294, 280, 1.4, 0.06 * v, 'sine'); break;
   }
 }

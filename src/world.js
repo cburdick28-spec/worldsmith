@@ -2,7 +2,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { makeNoise, rng, hash3 } from './noise.js';
 
-export const W = 160, D = 160, H = 48, SEA = 12, CS = 16;
+export const W = 256, D = 256, H = 48, SEA = 12, CS = 16;
 export const CX = W / CS, CZ = D / CS;
 export const WATER_Y = SEA + 0.85;
 
@@ -273,7 +273,7 @@ export function generate(seed) {
     if (vox[idx(x, h, z)] !== B.GRASS && !(h > 25 && h < 31)) continue;
     if (colOcc[z * W + x]) continue;
     const forest = n3.fbm(x / 28, z / 28, 3) * 2;
-    const p = 0.006 + Math.max(0, forest) * 0.11;
+    const p = 0.012 + Math.max(0, forest) * 0.17;
     if (R() > p) continue;
     let slope = 0;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) slope = Math.max(slope, Math.abs(height[(z + dz) * W + x + dx] - h));

@@ -1,6 +1,6 @@
 // People: humans, goblins and elves. AI, movement, combat and rendering.
 import * as THREE from '../vendor/three.module.js';
-import { W, D, H, SEA, WATER_Y, groundTop, solid, set, get, owner, idx, inB, structs, B, BLOCK, isWaterCol } from './world.js';
+import { W, D, H, SEA, WATER_Y, groundTop, solid, set, get, owner, idx, inB, structs, B, BLOCK, isWaterCol, height } from './world.js';
 import { onUnitDeath, chopTree, placeNext, nations, game, arriveCaravan, abortCaravan, caravanLost, raiderDown } from './nations.js';
 import { trample, onRoadXZ, onRoadCol, ROAD_COST, ROAD_SPEED } from './roads.js';
 import { puff, sparks, arrow, spawnDebris, ignite, splash } from './effects.js';
@@ -9,7 +9,7 @@ import { sfx } from './audio.js';
 import { rand } from './noise.js';
 
 export const units = [];
-export const MAXU = 1200;
+export const MAXU = 2400;
 let nextId = 1;
 export const setNextUnitId = n => { nextId = n; };
 export const getNextUnitId = () => nextId;
@@ -29,20 +29,27 @@ export function groundUnder(x, fromY, z) {
   return 0;
 }
 
+// Water columns are swimmable: the surface (SEA) acts as the floor there.
+const colIsWater = (cx, cz) => height[cz * W + cx] < SEA;
+const canSwim = u => u.role !== 'caravan' || u.y <= SEA + 0.01; // caravans keep to bridges unless already in the water
+function waterStand(u, cx, cz) {
+  if (!canSwim(u)) return null;
+  if (solid(cx, SEA, cz) || solid(cx, SEA + 1, cz)) return null;
+  if (!u.possessed && u.y > SEA + 3.01) return null; // no jumping off cliffs on purpose
+  return SEA;
+}
+
 // Where a unit would stand if it stepped to (nx, nz), or null if it can't go there.
 export function standY(u, nx, nz) {
   const cx = Math.floor(nx), cz = Math.floor(nz);
   if (cx < 1 || cz < 1 || cx >= W - 1 || cz >= D - 1) return null;
+  if (colIsWater(cx, cz)) return waterStand(u, cx, cz);
   if (cx === Math.floor(u.x) && cz === Math.floor(u.z)) return groundUnder(nx, u.y + 0.05, nz);
   let y = Math.min(H - 1, Math.floor(u.y + 0.05));
   while (y >= 0 && !solid(cx, y, cz)) y--;
   const g = y + 1;
   if (solid(cx, g, cz) || solid(cx, g + 1, cz)) return null;
-  if (!u.possessed) {
-    const inWater = u.y <= SEA + 0.01;
-    if (g <= SEA && !inWater) return null;
-    if (g < u.y - 3) return null;
-  }
+  if (!u.possessed && g < u.y - 3) return null;
   return g;
 }
 
@@ -56,7 +63,7 @@ export function spawnUnit(n, x, z, opts = {}) {
     age, maxAge, hp: st.hp, maxHp: st.hp,
     x, y: groundUnder(x, opts.y ?? H - 1, z), z, vx: 0, vy: 0, vz: 0, face: Math.random() * Math.PI * 2, side: 1,
     walk: 0, moving: false, state: 'idle', think: Math.random() * 2, timer: 0, target: null, task: null, tx: x, tz: z,
-    cd: 0, swing: 0, stuck: 0, path: null, pi: 0, pgx: 0, pgz: 0, pathCd: 0, partial: false, repath: false, fails: 0, held: false, flying: false, spin: 0, possessed: false, onFire: 0, alive: true, kills: 0,
+    cd: 0, swing: 0, stuck: 0, path: null, pi: 0, pgx: 0, pgz: 0, pathCd: 0, partial: false, repath: false, fails: 0, held: false, flying: false, swim: 0, spin: 0, possessed: false, onFire: 0, alive: true, kills: 0,
     born: performance.now(),
   };
   units.push(u);
@@ -131,7 +138,7 @@ function moveToward(u, tx, tz, dt, mul = 1, near = 0.5) {
   const dx = tx - u.x, dz = tz - u.z, d = Math.hypot(dx, dz);
   if (d < near) return true;
   const base = Math.atan2(dz, dx);
-  const sp = Math.min(d, u.st.speed * mul * dt * (u.onFire > 0 ? 1.4 : 1) * (onRoadXZ(u.x, u.z) ? ROAD_SPEED : 1));
+  const sp = Math.min(d, u.st.speed * mul * dt * (u.onFire > 0 ? 1.4 : 1) * (onRoadXZ(u.x, u.z) ? ROAD_SPEED : 1)) * (u.swim > 0 ? 0.55 : 1);
   for (const o of OFFS) {
     const a = base + o * u.side;
     const nx = u.x + Math.cos(a) * sp, nz = u.z + Math.sin(a) * sp;
@@ -192,13 +199,17 @@ function hpop() {
 }
 
 // Standing height after stepping from height y into column (nx, nz), or -1 if impossible.
+let curSwim = true;
 function stepFrom(y, nx, nz) {
   if (nx < 1 || nz < 1 || nx >= W - 1 || nz >= D - 1) return -1;
+  if (height[nz * W + nx] < SEA) {
+    if (!curSwim || y > SEA + 3 || solid(nx, SEA, nz) || solid(nx, SEA + 1, nz)) return -1;
+    return SEA;
+  }
   let yy = Math.min(H - 1, y);
   while (yy >= 0 && !solid(nx, yy, nz)) yy--;
   const g = yy + 1;
   if (solid(nx, g, nz) || solid(nx, g + 1, nz)) return -1;
-  if (g <= SEA && y > SEA) return -1;
   if (g < y - 3) return -1;
   return g;
 }
@@ -213,6 +224,7 @@ function findPath(u, tx, tz, near) {
   const reach = Math.max(0.75, near);
   if (pathBudget <= 0) return null;
   pathBudget--;
+  curSwim = canSwim(u);
   stamp++;
   hc.length = 0; hf.length = 0;
   const sx = Math.floor(u.x), sz = Math.floor(u.z), gx = Math.floor(tx), gz = Math.floor(tz);
@@ -402,6 +414,12 @@ function decide(u) {
   const [hx, hz] = homePoint(u);
   const r = u.role === 'king' ? 5 : u.role === 'soldier' ? 9 : 13;
   setState(u, 'goto');
+  if (u.role === 'villager' && Math.random() < 0.05) { // a dip in the sea
+    for (let k = 0; k < 10; k++) {
+      const x = hx + rand(-16, 16), z = hz + rand(-16, 16);
+      if (height[Math.floor(z) * W + Math.floor(x)] < SEA - 1 && groundTop(Math.floor(x), Math.floor(z)) < SEA) { u.tx = x; u.tz = z; u.think = rand(3, 6); return; }
+    }
+  }
   for (let k = 0; k < 6; k++) {
     u.tx = hx + rand(-r, r);
     u.tz = hz + rand(-r, r);
@@ -569,6 +587,18 @@ function act(u, dt) {
 
 function physics(u, dt) {
   const cx = Math.floor(u.x), cz = Math.floor(u.z);
+  if (colIsWater(cx, cz) && !solid(cx, SEA, cz)) {
+    if (u.y > SEA + 0.02) {
+      u.vy -= 28 * dt; u.y += u.vy * dt;
+      if (u.y > SEA) return;
+    }
+    if (!(u.swim > 0)) { splash(u.x, u.z, 8); u.swim = 0.001; }
+    u.vy = 0; u.y += (SEA - u.y) * Math.min(1, dt * 6) + 0.0001; if (u.y > SEA) u.y = SEA;
+    u.swim += dt;
+    if (u.onFire > 0) u.onFire = 0; // the water puts the flames out
+    return;
+  }
+  u.swim = 0;
   const fy = Math.floor(u.y + 0.01);
   if (solid(cx, fy, cz)) {
     let y = fy;
@@ -592,7 +622,7 @@ function flyUpdate(u, dt) {
   u.x = Math.min(W - 1.5, Math.max(1.5, u.x + u.vx * dt));
   u.z = Math.min(D - 1.5, Math.max(1.5, u.z + u.vz * dt));
   u.y += u.vy * dt;
-  u.spin += dt * 9;
+  u.spin += dt * 9; u.swim = 0;
   if (u.y < -5) { killUnit(u, 'splat'); return; }
   const cx = Math.floor(u.x), cz = Math.floor(u.z);
   const inside = solid(cx, Math.floor(u.y), cz);
@@ -600,7 +630,7 @@ function flyUpdate(u, dt) {
   if (isWaterCol(u.x, u.z) && u.y <= WATER_Y && u.vy < 0) {
     splash(u.x, u.z, 20);
     u.flying = false; u.vx = u.vz = u.vy = 0; u.spin = 0;
-    u.y = Math.max(u.y, g);
+    u.y = SEA + 0.5;
     setState(u, 'idle'); u.think = 1;
     return;
   }
@@ -624,7 +654,7 @@ export function updateUnits(dt) {
     if (u.flying) { flyUpdate(u, dt); continue; }
     physics(u, dt);
     if (!u.alive || u.possessed) continue;
-    if (u.y <= SEA + 0.01 && isWaterCol(u.x, u.z)) damageUnit(u, dt * 0.6, null, 'drown');
+    if (u.swim > 40) damageUnit(u, dt * 0.8, null, 'drown'); // too long in the water: exhaustion
     if (!u.alive) continue;
     if (u.onFire > 0 && u.state !== 'flee') {
       setState(u, 'flee');
@@ -711,7 +741,7 @@ export function renderUnits(time) {
     if (nu >= MAXU) break;
     const st = u.st;
     let y = u.y;
-    if (isWaterCol(u.x, u.z) && y < SEA + 0.35 && !u.flying && !u.held) y = SEA + 0.35;
+    if (u.swim > 0 && !u.flying && !u.held) y = SEA + 0.28 + Math.sin(time * 3 + u.id) * 0.07;
     r.root.position.set(u.x, y, u.z);
     r.root.rotation.set(u.spin, Math.PI / 2 - u.face, 0);
     r.root.scale.setScalar(st.scale);
