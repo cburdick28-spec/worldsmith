@@ -4,6 +4,7 @@ import { W, D, SEA, B, structs, colOcc, topAt, groundTop, newStruct, placeStruct
 import { units, spawnUnit, killUnit, setState, groundUnder, MAXU } from './units.js';
 import { leafBurst, spawnDebris } from './effects.js';
 import { log } from './ui.js';
+import { updateBuildings } from './buildings.js';
 import { rand, pick } from './noise.js';
 import { updateInfra, noteBlocked } from './infra.js';
 import { sfx } from './audio.js';
@@ -369,7 +370,7 @@ export function blessPeople(n, count) {
 }
 
 // Prosperity packs more people into each house (1x: normal, 50x: about 6x as many).
-export const capacity = n => 3 + Math.round(n.houses.length * n.R.perHouse * (1 + (game.prosperity - 1) * 0.1));
+export const capacity = n => (n.bonusCap || 0) + 3 + Math.round(n.houses.length * n.R.perHouse * (1 + (game.prosperity - 1) * 0.1));
 
 function updateNation(n, dt) {
   if (n.units.size === 0) { fallNation(n); return; }
@@ -525,14 +526,16 @@ export function updateNations(dt) {
   updateDisasters(dt);
   updatePolitics(dt);
   updateRuins(dt);
+  updateBuildings(dt);
   dipT += dt;
   if (dipT >= 1.5) { diplomacy(dipT); dipT = 0; }
   processDamaged();
 }
 
+const START_NATIONS = 5;
 export function setupNations() {
   const cands = [];
-  for (let i = 0; i < 2500; i++) {
+  for (let i = 0; i < 5000; i++) {
     const x = Math.floor(rand(16, W - 16)), z = Math.floor(rand(16, D - 16));
     const h = groundTop(x, z);
     if (h < SEA + 2 || h > 24) continue;
@@ -546,18 +549,26 @@ export function setupNations() {
   }
   if (!cands.length) cands.push({ x: W / 2, z: D / 2 }, { x: W / 2 + 30, z: D / 2 }, { x: W / 2, z: D / 2 + 30 });
   const chosen = [pick(cands)];
-  while (chosen.length < 3) {
+  while (chosen.length < START_NATIONS) {
     let best = null, bs = -Infinity;
     for (const c of cands) {
       const d = Math.min(...chosen.map(o => Math.hypot(o.x - c.x, o.z - c.z)));
-      const s = Math.min(d, 62) + Math.random() * 4;
+      const s = Math.min(d, 70) + Math.random() * 4;
       if (s > bs) { bs = s; best = c; }
     }
     chosen.push(best);
   }
-  const races = ['human', 'goblin', 'elf'];
-  chosen.forEach((c, i) => createNation(races[i], c.x, c.z));
-  log(`🌍 The world is young. Three peoples awaken: ${nations.map(nm).join(', ')}.`);
+  const races = ['human', 'goblin', 'elf', 'human', 'goblin'];
+  chosen.forEach((c, i) => {
+    const n = createNation(races[i], c.x, c.z);
+    if (i >= 3) { // a second people of the same race gets its own banner colour
+      const hsl = {}; n.color.getHSL(hsl);
+      n.color.setHSL((hsl.h + 0.09) % 1, Math.min(1, hsl.s * 0.9), Math.min(0.7, hsl.l + 0.06));
+      n.css = '#' + n.color.getHexString();
+      n.armor = n.color.clone().lerp(new THREE.Color('#6d727b'), 0.45);
+    }
+  });
+  log(`🌍 The world is young. ${START_NATIONS} peoples awaken: ${nations.map(nm).join(', ')}.`);
 }
 
 // ---------- save / load ----------

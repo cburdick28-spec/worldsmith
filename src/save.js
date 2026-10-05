@@ -5,9 +5,10 @@ import { units, spawnUnit, setState, setNextUnitId, getNextUnitId } from './unit
 import { nations, snapshotNations, restoreNations, game } from './nations.js';
 import { roads, roadStats } from './roads.js';
 import { infra } from './infra.js';
+import { resetBuildings } from './buildings.js';
 import { snapshotVolcanoes, restoreVolcanoes } from './disasters.js';
 
-const VERSION = 1;
+const VERSION = 2; // 2: 256x256 world
 
 // ---- byte helpers ----
 
@@ -164,6 +165,7 @@ export function restoreSnapshot(snap) {
   infra.bridges = structs.filter(s => s && s.kind === 'bridge' && !s.dead);
   infra.inns = structs.filter(s => s && s.kind === 'inn' && !s.dead);
   infra.blocked.clear();
+  resetBuildings();
   restoreVolcanoes(snap.volcanoes || []);
 }
 

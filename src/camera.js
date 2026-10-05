@@ -20,7 +20,7 @@ export class GodCam {
     this.target.z += (dx * s - dy * c) * k;
   }
   zoom(delta) {
-    this.goal.dist = Math.min(220, Math.max(9, this.goal.dist * Math.pow(1.0015, delta)));
+    this.goal.dist = Math.min(380, Math.max(9, this.goal.dist * Math.pow(1.0015, delta)));
   }
   focus(x, z) { this.target.x = x; this.target.z = z; }
   update(dt, keys, shake) {

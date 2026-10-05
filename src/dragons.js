@@ -17,7 +17,7 @@ let scene, ridden = null, wildT = rand(8, 16);
 export const isRiding = () => !!ridden;
 
 const NAMES = ['Vharzul', 'Kaldrith', 'Ashmaw', 'Nyxor', 'Ember-of-the-North', 'Skorrath', 'Ilmarax', 'Dracul-Teth'];
-const MAX_DRAGONS = 3;
+const MAX_DRAGONS = 4;
 const SCALE = 1.35;
 const mat = (c, extra = {}) => new THREE.MeshLambertMaterial({ color: c, ...extra });
 const M = { scale: mat('#7a1f1a'), belly: mat('#d6a050'), horn: mat('#e8dcc0'), eye: new THREE.MeshBasicMaterial({ color: 0xffd23a }), wing: mat('#a22d2a', { side: THREE.DoubleSide }) };

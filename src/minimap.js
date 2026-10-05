@@ -5,6 +5,7 @@ import { nations } from './nations.js';
 import { units } from './units.js';
 import { infra } from './infra.js';
 import { dragons } from './dragons.js';
+import { civics } from './buildings.js';
 
 const REACH = 15; // how far a house claims land around it
 let canvas, ctx, img, godCam, T = 0, show = true;
@@ -97,6 +98,8 @@ function draw() {
   }
   ctx.fillStyle = '#ffd26a';
   for (const i of infra.inns) if (!i.dead) ctx.fillRect(Math.floor(i.cx) - 1, Math.floor(i.cz) - 1, 3, 3);
+  ctx.fillStyle = '#e8e4d8';
+  for (const c of civics) if (!c.dead) ctx.fillRect(Math.floor(c.cx) - 1, Math.floor(c.cz) - 1, 2, 2);
   ctx.fillStyle = '#d9a766';
   for (const b of infra.bridges) if (!b.dead) ctx.fillRect(Math.floor(b.cx) - 1, Math.floor(b.cz) - 1, 3, 2);
   ctx.fillStyle = '#ff5a1a';
