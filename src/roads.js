@@ -12,6 +12,7 @@ const PAVABLE = new Set([B.GRASS, B.DIRT, B.SAND]);
 export const roads = new Uint8Array(W * D);
 export const roadStats = { tiles: 0 };
 const wear = new Map();
+export const traffic = new Map(); // paved column -> how much foot traffic it carries (drives waystations)
 let decayT = 0;
 
 // True if column c currently has a road on top. Self-heals when the ground was since
@@ -38,7 +39,7 @@ function pave(x, z, c) {
 export function trample(x, z, amount) {
   if (x < 1 || z < 1 || x >= W - 1 || z >= D - 1) return;
   const c = z * W + x;
-  if (roads[c]) return;
+  if (roads[c]) { traffic.set(c, (traffic.get(c) || 0) + amount); return; }
   const w = (wear.get(c) || 0) + amount;
   if (w >= PAVE_AT) { wear.delete(c); pave(x, z, c); } else wear.set(c, w);
 }
@@ -47,6 +48,7 @@ export function updateRoads(dt) {
   decayT += dt;
   if (decayT < DECAY_EVERY) return;
   decayT = 0;
+  for (const [c, w] of traffic) { const t = w * 0.97; if (t < 0.5 || !roads[c]) traffic.delete(c); else traffic.set(c, t); }
   for (const [c, w] of wear) {
     const n = w * DECAY;
     if (n < 0.15) wear.delete(c); else wear.set(c, n);

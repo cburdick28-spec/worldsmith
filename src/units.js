@@ -1,9 +1,10 @@
 // People: humans, goblins and elves. AI, movement, combat and rendering.
 import * as THREE from '../vendor/three.module.js';
 import { W, D, H, SEA, WATER_Y, groundTop, solid, set, get, owner, idx, inB, structs, B, BLOCK, isWaterCol } from './world.js';
-import { onUnitDeath, chopTree, placeNext, nations, game, arriveCaravan, abortCaravan, caravanLost } from './nations.js';
+import { onUnitDeath, chopTree, placeNext, nations, game, arriveCaravan, abortCaravan, caravanLost, raiderDown } from './nations.js';
 import { trample, onRoadXZ, onRoadCol, ROAD_COST, ROAD_SPEED } from './roads.js';
 import { puff, sparks, arrow, spawnDebris, ignite, splash } from './effects.js';
+import { nearInn, visitInns } from './infra.js';
 import { rand } from './noise.js';
 
 export const units = [];
@@ -84,7 +85,7 @@ export function damageUnit(u, dmg, by, cause) {
   u.hp -= dmg;
   if (by) puff(u.x, u.y + 0.9, u.z, 'blood');
   if (u.hp <= 0) { killUnit(u, cause || 'battle', by); return; }
-  if (by && by.alive && !u.possessed && u.state !== 'fight' && by.nation !== u.nation) {
+  if (by && by.alive && !u.possessed && u.role !== 'caravan' && u.state !== 'fight' && by.nation !== u.nation) {
     if (u.role === 'villager' && by.role === 'soldier' && Math.random() < 0.5) flee(u, by.x, by.z);
     else { setState(u, 'fight'); u.target = by; }
   }
@@ -98,6 +99,7 @@ export function killUnit(u, cause, by) {
   if (by) by.kills++;
   puff(u.x, u.y + 0.8, u.z, cause === 'age' ? 'smoke' : 'blood');
   if (u.role === 'caravan') caravanLost(u, cause, by);
+  if (u.role === 'raider') raiderDown(u, by);
   onUnitDeath(u, cause, by);
 }
 
@@ -282,6 +284,8 @@ function navigate(u, tx, tz, dt, mul = 1, near = 0.5) {
   return false;
 }
 
+const isMil = u => u.role === 'soldier' || u.role === 'escort' || u.role === 'raider';
+
 function faceToward(u, x, z, dt) {
   u.face = lerpAngle(u.face, Math.atan2(z - u.z, x - u.x), Math.min(1, dt * 10));
 }
@@ -290,6 +294,27 @@ function nearestEnemyUnit(u, r, enemies) {
   let best = null, bd = r * r;
   for (const t of units) {
     if (!t.alive || t.held || t.flying || !enemies.includes(t.nation)) continue;
+    const d = (t.x - u.x) ** 2 + (t.z - u.z) ** 2;
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best;
+}
+
+function nearestCaravan(u, r) {
+  let best = null, bd = r * r;
+  for (const t of units) {
+    if (!t.alive || t.role !== 'caravan' || t.nation === u.nation || t.held || t.flying) continue;
+    if (u.nation.allies.includes(t.nation)) continue;
+    const d = (t.x - u.x) ** 2 + (t.z - u.z) ** 2;
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best;
+}
+
+function nearestRaider(u, r) {
+  let best = null, bd = r * r;
+  for (const t of units) {
+    if (!t.alive || t.role !== 'raider' || t.nation === u.nation || t.held || t.flying) continue;
     const d = (t.x - u.x) ** 2 + (t.z - u.z) ** 2;
     if (d < bd) { bd = d; best = t; }
   }
@@ -333,6 +358,14 @@ function decide(u) {
   if (u.role === 'caravan') {
     if (u.trade) { setState(u, 'trade'); return; } // e.g. after a scuffle: back on the road
     u.role = 'villager';
+  }
+  if (u.role === 'raider') {
+    if (u.raid) { setState(u, 'raid'); return; }
+    u.role = 'villager';
+  }
+  if (u.role === 'escort') {
+    if (u.escortOf && u.escortOf.alive && u.escortOf.role === 'caravan') { setState(u, 'escort'); return; }
+    u.escortOf = null; u.role = 'villager';
   }
   if (u.role === 'soldier' && enemies.length) {
     const t = nearestEnemyUnit(u, 32, enemies);
@@ -408,10 +441,47 @@ function act(u, dt) {
     case 'trade': {
       const t = u.trade;
       if (!t || !t.dest.alive || !t.dest.houses.length || u.nation.enemies.includes(t.dest)) { abortCaravan(u); break; }
+      visitInns(u);
       const d = dist(u, t.gx, t.gz);
       const r = navigate(u, t.gx, t.gz, dt, 1.1, 4.5);
       if (r === true || (r === 'stuck' && d < 9)) arriveCaravan(u);
-      else if (r === 'stuck') abortCaravan(u);
+      else if (r === 'stuck') abortCaravan(u, 'stuck');
+      break;
+    }
+    case 'raid': {
+      const r = u.raid;
+      if (!r) { u.role = 'villager'; setState(u, 'idle'); break; }
+      r.t -= dt;
+      if (r.phase === 'go') {
+        const res = navigate(u, r.x, r.z, dt, 1.05, 1.5);
+        if (res === true || res === 'stuck') r.phase = 'wait';
+        else if (r.t <= 0) r.phase = 'home';
+      } else if (r.phase === 'wait') {
+        r.scan -= dt;
+        if (r.scan <= 0) {
+          r.scan = 0.4;
+          const prey = nearestCaravan(u, 10);
+          if (prey) { setState(u, 'fight'); u.target = prey; break; }
+          if (nearInn(u.x, u.z, 14)) r.t = 0; // the inn's guards drive them off
+        }
+        if (r.t <= 0) r.phase = 'home';
+      } else {
+        const [hx, hz] = homePoint(u);
+        const res = navigate(u, hx, hz, dt, 1, 6);
+        if (res === true || res === 'stuck' || r.t < -40) { u.raid = null; u.role = 'villager'; setState(u, 'idle'); u.think = 0.5; }
+      }
+      break;
+    }
+    case 'escort': {
+      const c = u.escortOf;
+      if (!c || !c.alive || c.role !== 'caravan') { u.escortOf = null; u.role = 'villager'; setState(u, 'idle'); u.think = 0.3; break; }
+      u.think -= dt;
+      if (u.think <= 0) {
+        u.think = 0.5;
+        const t = nearestRaider(u, 12);
+        if (t) { setState(u, 'fight'); u.target = t; break; }
+      }
+      navigate(u, c.x, c.z, dt, 1.25, 2.2);
       break;
     }
     case 'chop': {
@@ -466,7 +536,7 @@ function act(u, dt) {
         u.cd = u.race === 'goblin' ? 0.8 : ranged ? 1.4 : 1.0;
         u.swing = 1;
         if (ranged) arrow(u.x, u.y + 1.1, u.z, t.x, t.y + 0.9, t.z);
-        damageUnit(t, rand(u.st.dmg[0], u.st.dmg[1]) * (u.role === 'soldier' ? 1.25 : 0.8), u, 'battle');
+        damageUnit(t, rand(u.st.dmg[0], u.st.dmg[1]) * (isMil(u) ? 1.25 : 0.8), u, 'battle');
       }
       break;
     }
@@ -590,6 +660,7 @@ let M;
 const rig = {};
 const GOLD = new THREE.Color('#f2c443');
 const PACK = new THREE.Color('#c9a15f');
+const BANDIT = new THREE.Color('#3a3330');
 const tmpC = new THREE.Color();
 
 export function initUnitMeshes(scene) {
@@ -650,14 +721,14 @@ export function renderUnits(time) {
     M.leg.setMatrixAt(nl, r.legL.matrixWorld); M.leg.setColorAt(nl++, st.legsC);
     M.leg.setMatrixAt(nl, r.legR.matrixWorld); M.leg.setColorAt(nl++, st.legsC);
     M.body.setMatrixAt(nu, r.body.matrixWorld);
-    tmpC.copy(u.role === 'soldier' ? n.armor : n.color);
+    tmpC.copy(u.role === 'raider' ? BANDIT : isMil(u) ? n.armor : n.color);
     if (u.onFire > 0 && (time * 10 | 0) % 2) tmpC.lerp(GOLD, 0.6);
     M.body.setColorAt(nu, tmpC);
     M.head.setMatrixAt(nu, r.head.matrixWorld); M.head.setColorAt(nu, st.skinC);
     nu++;
-    if (u.role === 'soldier' || u.state === 'chop' || u.state === 'build') {
+    if (isMil(u) || u.state === 'chop' || u.state === 'build') {
       M.weapon.setMatrixAt(nw, r.weapon.matrixWorld);
-      M.weapon.setColorAt(nw++, u.role === 'soldier' ? st.weaponC : RSTAT.goblin.legsC);
+      M.weapon.setColorAt(nw++, isMil(u) ? st.weaponC : RSTAT.goblin.legsC);
     }
     if (u.role === 'caravan' && np < 96) {
       M.pack.setMatrixAt(np, r.pack.matrixWorld);

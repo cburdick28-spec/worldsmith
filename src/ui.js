@@ -1,6 +1,7 @@
 // DOM overlay: nations panel, chronicle, toolbar, tooltips and the possession HUD.
 import { nations, game, capacity, nm, giftWood, blessPeople } from './nations.js';
 import { units } from './units.js';
+import { infra } from './infra.js';
 import { roadStats } from './roads.js';
 import { LAWS, CRISES, cycleLaw, eraState, price, GOODS } from './economy.js';
 
@@ -70,7 +71,7 @@ function relText(n) {
 
 export function updateUI() {
   $('year').textContent = `Year ${game.year}`;
-  $('pop').textContent = `${eraState.era.name} · ${units.length} souls · ${Math.max(0, roadStats.tiles)} road tiles`;
+  $('pop').textContent = `${eraState.era.name} · ${units.length} souls · ${Math.max(0, roadStats.tiles)} road tiles · 🌉 ${infra.bridges.length} · 🏨 ${infra.inns.length}`;
   const list = $('nations');
   const alive = nations.filter(n => n.alive);
   list.innerHTML = alive.map(n => {
@@ -97,8 +98,8 @@ export function showTip(x, y, html) {
 }
 export function hideTip() { $('tip').style.display = 'none'; }
 
-const ROLE = { villager: 'Villager', soldier: 'Soldier', king: 'Ruler', caravan: 'Trader' };
-const STATE = { idle: 'resting', goto: 'wandering', flee: 'fleeing', chop: 'chopping wood', build: 'building a house', fight: 'fighting', siege: 'besieging a house', trade: 'leading a trade caravan' };
+const ROLE = { villager: 'Villager', soldier: 'Soldier', king: 'Ruler', caravan: 'Trader', raider: 'Bandit', escort: 'Escort' };
+const STATE = { idle: 'resting', goto: 'wandering', flee: 'fleeing', chop: 'chopping wood', build: 'building a house', fight: 'fighting', siege: 'besieging a house', trade: 'leading a trade caravan', raid: 'lying in ambush', escort: 'guarding a caravan' };
 
 export function unitHTML(u) {
   return `<b>${u.name}</b> of ${nm(u.nation)}<br>${u.role === 'king' ? u.nation.R.ruler : ROLE[u.role]} · age ${u.age} · ${Math.max(0, Math.ceil(u.hp))}/${u.maxHp} hp<br><span class="dim">${u.held ? 'in your grasp' : u.flying ? 'flying!' : STATE[u.state] || u.state}${u.kills ? ` · ${u.kills} kills` : ''}</span>`;
