@@ -4,6 +4,7 @@ import { W, D, SEA, BLOCK, vox, idx, topAt } from './world.js';
 import { nations } from './nations.js';
 import { units } from './units.js';
 import { infra } from './infra.js';
+import { dragons } from './dragons.js';
 
 const REACH = 15; // how far a house claims land around it
 let canvas, ctx, img, godCam, T = 0, show = true;
@@ -98,6 +99,8 @@ function draw() {
   for (const i of infra.inns) if (!i.dead) ctx.fillRect(Math.floor(i.cx) - 1, Math.floor(i.cz) - 1, 3, 3);
   ctx.fillStyle = '#d9a766';
   for (const b of infra.bridges) if (!b.dead) ctx.fillRect(Math.floor(b.cx) - 1, Math.floor(b.cz) - 1, 3, 2);
+  ctx.fillStyle = '#ff5a1a';
+  for (const d of dragons) if (!d.dead) { ctx.fillRect(Math.floor(d.x) - 2, Math.floor(d.z) - 2, 5, 5); }
   // fighting
   ctx.fillStyle = '#ff3b30';
   for (const u of units) if (u.alive && u.state === 'fight') ctx.fillRect(Math.floor(u.x), Math.floor(u.z), 2, 2);

@@ -1,12 +1,14 @@
 // Nations: kingdoms that grow, build, crown kings, make alliances and wage war on their own.
 import * as THREE from '../vendor/three.module.js';
 import { W, D, SEA, B, structs, colOcc, topAt, groundTop, newStruct, placeStruct, removeStruct, flatten, housePlan, claimFoot, damaged } from './world.js';
-import { units, spawnUnit, killUnit, setState, MAXU } from './units.js';
+import { units, spawnUnit, killUnit, setState, groundUnder, MAXU } from './units.js';
 import { leafBurst, spawnDebris } from './effects.js';
 import { log } from './ui.js';
 import { rand, pick } from './noise.js';
 import { updateInfra, noteBlocked } from './infra.js';
 import { sfx } from './audio.js';
+import { updatePolitics, trySuccessionSplit, bindVassals, settleWar } from './politics.js';
+import { noteRuin, noteFelled, updateRuins } from './ruins.js';
 import { updateDisasters } from './disasters.js';
 import { updateRaids, assignEscort, raidStats } from './raids.js';
 import { initEconomy, seedFarm, updateEconomy, economyBuild, updateWorldEconomy, pickCargo, settleTrade, lawWar, warMult, GOODS } from './economy.js';
@@ -42,6 +44,7 @@ export const RACES = {
 };
 
 export const nm = n => `<b style="color:${n.css}">${n.name}</b>`;
+export const rulerTitle = n => n.title || n.R.ruler;
 
 function genName(race) {
   const [a, b] = RACES[race].syl;
@@ -61,7 +64,7 @@ export function rel(a, b) {
   return r;
 }
 
-function refreshDiplomacy() {
+export function refreshDiplomacy() {
   for (const n of nations) {
     n.enemies = nations.filter(m => m.alive && m !== n && n.alive && rel(n, m).war);
     n.allies = nations.filter(m => m.alive && m !== n && n.alive && rel(n, m).ally);
@@ -70,7 +73,7 @@ function refreshDiplomacy() {
 
 // ---------- houses ----------
 
-function createHouse(n, x0, z0, g, capital) {
+export function createHouse(n, x0, z0, g, capital) {
   const s = newStruct('house', { nation: n, x0, z0, g, cx: x0 + 3.5, cz: z0 + 3.5, capital, built: false, builders: new Set() });
   s.plan = housePlan(n.race, x0, z0, g, n.R.roof, capital);
   s.total = s.plan.length;
@@ -111,6 +114,7 @@ export function detachHouse(s) {
 function ruinHouse(s) {
   removeStruct(s, false); // voxels stay where they are: ruins
   detachHouse(s);
+  if (s.nation && s.nation.alive) noteRuin(s.nation, s);
 }
 
 export function clearTrees(x0, z0, x1, z1, n) {
@@ -150,7 +154,23 @@ function findSite(n, rough = 2) {
 
 // ---------- nations ----------
 
-export function createNation(race, x, z) {
+// Moves a person into another nation (settlers founding a village, a faction breaking away).
+export function moveUnit(u, n, px, pz) {
+  const old = u.nation;
+  old.units.delete(u);
+  if (old.king === u) old.king = null;
+  u.nation = n; u.race = n.race;
+  n.units.add(u);
+  u.x = px; u.z = pz; u.y = groundUnder(px, 80, pz);
+  u.vx = u.vy = u.vz = 0;
+  if (u.role !== 'king' && u.role !== 'soldier') u.role = 'villager';
+  setState(u, 'idle');
+  u.think = rand(0.2, 1);
+}
+
+// opts: { liege, members, king, house } - settlers for a new village, or a splinter faction that
+// takes over one of its parent's houses.
+export function createNation(race, x, z, opts = {}) {
   const R = RACES[race];
   const place = pickPlace(race);
   const n = {
@@ -158,22 +178,39 @@ export function createNation(race, x, z) {
     alive: true, wood: 24, houses: [], sites: [], capital: { x, z }, king: null, units: new Set(),
     founded: game.year, birthT: 0, buildT: rand(0, 2), enemies: [], allies: [], genName: () => genName(race),
     caravanT: rand(8, 16), caravans: 0, trips: 0,
+    liege: null, title: null, unrest: 0, villageT: rand(10, 18), lastSplit: -99,
   };
   initEconomy(n);
   n.armor = n.color.clone().lerp(new THREE.Color('#6d727b'), 0.45);
   nations.push(n);
 
-  const x0 = Math.max(5, Math.min(W - 12, Math.round(x) - 3));
-  const z0 = Math.max(5, Math.min(D - 12, Math.round(z) - 3));
-  clearTrees(x0 - 2, z0 - 2, x0 + 8, z0 + 8);
-  const g = flatten(x0, z0, 7);
-  const h = createHouse(n, x0, z0, g, true);
-  while (placeNext(h));
+  let x0, z0, g, h;
+  if (opts.house) {
+    h = opts.house;
+    const old = h.nation;
+    if (old) { const i = old.houses.indexOf(h); if (i >= 0) old.houses.splice(i, 1); }
+    h.nation = n; h.capital = true;
+    n.houses.push(h);
+    x0 = h.x0; z0 = h.z0; g = h.g;
+  } else {
+    x0 = Math.max(5, Math.min(W - 12, Math.round(x) - 3));
+    z0 = Math.max(5, Math.min(D - 12, Math.round(z) - 3));
+    clearTrees(x0 - 2, z0 - 2, x0 + 8, z0 + 8);
+    g = flatten(x0, z0, 7);
+    h = createHouse(n, x0, z0, g, true);
+    while (placeNext(h));
+  }
   n.capital = { x: h.cx, z: h.cz };
   seedFarm(n);
 
-  n.king = spawnUnit(n, x0 + 3.5, z0 + 0.5, { role: 'king', age: Math.floor(rand(24, 38)), y: g + 1 });
-  for (let i = 0; i < 6; i++) spawnUnit(n, x0 + rand(0.5, 6.5), z0 + 0.5, { y: g + 1 });
+  if (opts.members && opts.members.length) {
+    opts.members.forEach(u => moveUnit(u, n, x0 + rand(0.5, 6.5), z0 + 0.5));
+    n.king = opts.king || opts.members[0];
+    n.king.role = 'king';
+  } else {
+    n.king = spawnUnit(n, x0 + 3.5, z0 + 0.5, { role: 'king', age: Math.floor(rand(24, 38)), y: g + 1 });
+    for (let i = 0; i < 6; i++) spawnUnit(n, x0 + rand(0.5, 6.5), z0 + 0.5, { y: g + 1 });
+  }
   refreshDiplomacy();
   return n;
 }
@@ -212,9 +249,10 @@ export function onUnitDeath(u, cause, by) {
   n.king = null;
   let how = DEATHS[cause] ? DEATHS[cause](u) : 'perished';
   if (cause === 'battle' && by) how = `was slain by ${by.name} of ${nm(by.nation)}`;
+  const rival = trySuccessionSplit(n);
   const heir = crown(n);
-  log(`👑 ${n.R.ruler} ${u.name} of ${nm(n)} ${how}.` + (heir ? ` ${heir.name} inherits the throne.` : ''));
-  if (heir) for (const m of nations) if (m !== n && m.alive) rel(n, m).tension += rand(0, 25);
+  log(`👑 ${rulerTitle(n)} ${u.name} of ${nm(n)} ${how}.` + (heir ? ` ${heir.name} inherits the throne.` : ''));
+  if (heir) for (const m of nations) if (m !== n && m.alive && m !== rival) rel(n, m).tension += rand(0, 25);
 }
 
 function fallNation(n) {
@@ -397,6 +435,7 @@ function declareWar(a, b, r) {
   r.war = true; r.ally = false; r.warT = 0; r.tension = 0;
   log(`⚔️ ${nm(att)} declares war on ${nm(def)}!`);
   sfx('horn', def.capital.x, def.capital.z);
+  bindVassals(att, def);
   for (const c of nations) {
     if (!c.alive || c === att || c === def) continue;
     if (rel(c, def).ally && !rel(c, att).war && Math.random() < 0.75) {
@@ -415,11 +454,13 @@ function diplomacy(step) {
   const alive = nations.filter(n => n.alive);
   for (let i = 0; i < alive.length; i++) for (let j = i + 1; j < alive.length; j++) {
     const a = alive[i], b = alive[j], r = rel(a, b);
+    if (a.liege === b || b.liege === a) { r.war = false; r.ally = true; r.tension = -40; continue; } // lord and vassal
     if (r.war) {
       r.warT += step;
       if ((r.warT > 50 && Math.random() < 0.025) || a.units.size <= 2 || b.units.size <= 2) {
         r.war = false; r.tension = rand(-30, 0);
         log(`🕊️ ${nm(a)} and ${nm(b)} make peace.`);
+        settleWar(a, b);
       }
       continue;
     }
@@ -442,6 +483,7 @@ function diplomacy(step) {
 // ---------- structures reacting to damage ----------
 
 function fellTree(s) {
+  noteFelled(s.x, s.z, s.plan.some(p => p[3] === B.PINE) ? 'pine' : 'oak');
   const vs = removeStruct(s);
   let top = 0;
   for (const [x, y, z, t] of vs) {
@@ -481,6 +523,8 @@ export function updateNations(dt) {
   updateRaids(dt);
   updateInfra(dt);
   updateDisasters(dt);
+  updatePolitics(dt);
+  updateRuins(dt);
   dipT += dt;
   if (dipT >= 1.5) { diplomacy(dipT); dipT = 0; }
   processDamaged();
@@ -528,6 +572,7 @@ export function snapshotNations() {
       kingId: n.king ? n.king.id : null,
       houses: n.houses.map(h => h.id), sites: n.sites.map(h => h.id), farms: n.farms.map(f => f.id),
       birthT: n.birthT, buildT: n.buildT, caravanT: n.caravanT, caravans: n.caravans, trips: n.trips,
+      css: n.css, title: n.title, unrest: n.unrest, villageT: n.villageT, lastSplit: n.lastSplit, liegeId: n.liege ? n.liege.id : null, ruins: n.ruins || [],
       law: n.law, lawT: n.lawT, crisis: n.crisis, starving: n.starving, hungerT: n.hungerT, ecoT: n.ecoT,
     })),
   };
@@ -543,16 +588,17 @@ export function restoreNations(snap) {
   for (const d of snap.list) {
     const R = RACES[d.race];
     const n = {
-      ...d, R, css: R.color, color: new THREE.Color(R.color), units: new Set(), king: null, enemies: [], allies: [],
+      ...d, R, css: d.css || R.color, color: new THREE.Color(d.css || R.color), units: new Set(), liege: null, king: null, enemies: [], allies: [],
       genName: () => genName(d.race),
       houses: d.houses.map(id => structs[id]).filter(s => s && !s.dead),
       sites: d.sites.map(id => structs[id]).filter(s => s && !s.dead),
       farms: d.farms.map(id => structs[id]).filter(s => s && !s.dead),
     };
-    delete n.kingId;
+    delete n.kingId; delete n.liegeId;
     n.armor = n.color.clone().lerp(new THREE.Color('#6d727b'), 0.45);
     nations.push(n);
   }
+  for (const d of snap.list) if (d.liegeId) nations.find(m => m.id === d.id).liege = nations.find(m => m.id === d.liegeId) || null;
   for (const s of structs) if (s && s.nation && typeof s.nation === 'number') s.nation = nations.find(n => n.id === s.nation) || null;
   refreshDiplomacy();
 }

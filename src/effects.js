@@ -329,6 +329,15 @@ export function leafBurst(x, y, z, n = 30, color = '#47923a') {
   for (let i = 0; i < n; i++) dustPool.spawn(x + rand(-2, 2), y + rand(-1, 2), z + rand(-2, 2), rand(-1.5, 1.5), rand(0, 2), rand(-1.5, 1.5), rand(1, 2), c, c, 3, 1.5, 1);
 }
 
+// dragon fire: a jet of flame along (dx,dy,dz) from the mouth
+export function flameBreath(x, y, z, dx, dy, dz, n = 14) {
+  for (let i = 0; i < n; i++) {
+    const sp = rand(14, 26);
+    firePool.spawn(x, y, z, dx * sp + rand(-2.2, 2.2), dy * sp + rand(-2.2, 2.2), dz * sp + rand(-2.2, 2.2), rand(0.35, 0.8), COL.fireA, COL.fireB, 0, 0.9, 1);
+  }
+  if (Math.random() < 0.5) smokePool.spawn(x + dx * 8, y + dy * 8, z + dz * 8, rand(-1, 1), rand(0.5, 2), rand(-1, 1), rand(1.5, 2.5), COL.smokeA, COL.smokeB, -0.3, 0.5, 0.4);
+}
+
 // helpers used by disasters.js
 export function smokeColumn(x, y, z, n = 6) {
   for (let i = 0; i < n; i++) smokePool.spawn(x + rand(-1.5, 1.5), y, z + rand(-1.5, 1.5), rand(-1, 1), rand(3, 7), rand(-1, 1), rand(2.5, 4.5), COL.smokeA, COL.smokeB, -0.3, 0.3, 0.55);

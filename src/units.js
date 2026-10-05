@@ -107,7 +107,7 @@ export function killUnit(u, cause, by) {
   onUnitDeath(u, cause, by);
 }
 
-function flee(u, fx, fz) {
+export function flee(u, fx, fz) {
   setState(u, 'flee');
   const n = u.nation;
   const home = n.houses.length ? n.houses[0] : null;

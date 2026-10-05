@@ -9,6 +9,7 @@ import { updateRoads } from './roads.js';
 import { eraState } from './economy.js';
 import { initUI, updateUI, setProsperityUI, toast } from './ui.js';
 import { initMinimap, updateMinimap } from './minimap.js';
+import { initDragons, updateDragons, updateRideCamera, isRiding } from './dragons.js';
 import { initAudio, updateAudio, setListener, setMuted, isMuted } from './audio.js';
 import { makeSnapshot, restoreSnapshot, encodeSnapshot, decodeSnapshot, saveToStorage, hasSave, readSave, queueLoad, takePendingLoad } from './save.js';
 import { game } from './nations.js';
@@ -62,6 +63,7 @@ generate(seed);
 initChunks(scene);
 initEffects(scene);
 initUnitMeshes(scene);
+initDragons(scene);
 
 const godCam = new GodCam(camera);
 initPowers({ camera, godCam, canvas: renderer.domElement, scene });
@@ -81,7 +83,7 @@ rebuildDirty(1000);
 document.getElementById('seed').textContent = `seed ${seed}`;
 
 initMinimap(godCam);
-setListener(() => (isPossessing() ? camera.position : godCam.target));
+setListener(() => (isPossessing() || isRiding() ? camera.position : godCam.target));
 const camState = () => ({ x: godCam.target.x, z: godCam.target.z, dist: godCam.goal.dist, yaw: godCam.goal.yaw, pitch: godCam.goal.pitch });
 const $ = id => document.getElementById(id);
 $('begin').addEventListener('click', initAudio);
@@ -135,12 +137,14 @@ function frame() {
       updateUnits(h);
       updateRoads(h);
       updateEffects(h);
+      updateDragons(h, time);
     }
   }
   updatePowers(dt, simDt, time);
   updateMinimap(dt);
   updateAudio(fireCount(), godCam.dist);
-  if (!isPossessing()) godCam.update(dt, input.keys, fx.shake);
+  if (isRiding()) { updateRideCamera(camera); if (fx.shake > 0.01) camera.position.y += (Math.random() - 0.5) * fx.shake * 0.4; }
+  else if (!isPossessing()) godCam.update(dt, input.keys, fx.shake);
   else if (fx.shake > 0.01) camera.position.y += (Math.random() - 0.5) * fx.shake * 0.4;
   rebuildDirty(14);
   renderUnits(time);

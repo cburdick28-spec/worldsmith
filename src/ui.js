@@ -1,5 +1,5 @@
 // DOM overlay: nations panel, chronicle, toolbar, tooltips and the possession HUD.
-import { nations, game, capacity, nm, giftWood, blessPeople } from './nations.js';
+import { nations, game, capacity, nm, giftWood, blessPeople, rulerTitle } from './nations.js';
 import { units } from './units.js';
 import { infra } from './infra.js';
 import { roadStats } from './roads.js';
@@ -80,8 +80,8 @@ export function updateUI() {
     const k = n.king;
     return `<div class="nation" style="--c:${n.css}">
       <div class="nt">${n.name}</div>
-      <div class="ns">${n.R.label} · founded Y${n.founded}</div>
-      <div class="king">👑 ${k ? `${n.R.ruler} ${k.name}, age ${k.age}` : '<i>no ruler</i>'}</div>
+      <div class="ns">${n.R.label} · founded Y${n.founded}${n.liege ? ` · 🏘️ vassal of ${n.liege.place}` : ''}${nations.some(m => m.alive && m.liege === n) ? ` · ${nations.filter(m => m.alive && m.liege === n).length} vassals` : ''}</div>
+      <div class="king">👑 ${k ? `${rulerTitle(n)} ${k.name}, age ${k.age}` : '<i>no ruler</i>'}</div>
       <div class="stats"><span title="Population / housing">👥 ${n.units.size}/${capacity(n)}</span><span title="Soldiers">🗡 ${soldiers}</span><span title="Houses">🏠 ${n.houses.length}</span><span title="Wood (price ${price(n, 'wood').toFixed(1)})">🪵 ${Math.floor(n.wood)}</span><span title="Food (price ${price(n, 'food').toFixed(1)})" class="${n.starving ? 'war' : ''}">🌾 ${Math.floor(n.food)}</span><span title="Stone (price ${price(n, 'stone').toFixed(1)})">🪨 ${Math.floor(n.stone)}</span><span title="Treasury">🪙 ${Math.floor(n.gold)}</span><span title="Farms">🚜 ${n.farms.length}</span><span title="Trade caravans completed">🐪 ${n.trips}</span></div>
       <div class="rel">${relText(n)}</div>
       <div class="rel" title="${LAWS[n.law].hint}">${LAWS[n.law].icon} ${LAWS[n.law].name}${n.crisis ? ` · <b>${CRISES[n.crisis.kind].icon} ${CRISES[n.crisis.kind].name}</b>` : ''}${n.starving ? ' · <span class="war">☠️ starving</span>' : ''}</div>
@@ -102,7 +102,7 @@ const ROLE = { villager: 'Villager', soldier: 'Soldier', king: 'Ruler', caravan:
 const STATE = { idle: 'resting', goto: 'wandering', flee: 'fleeing', chop: 'chopping wood', build: 'building a house', fight: 'fighting', siege: 'besieging a house', trade: 'leading a trade caravan', raid: 'lying in ambush', escort: 'guarding a caravan' };
 
 export function unitHTML(u) {
-  return `<b>${u.name}</b> of ${nm(u.nation)}<br>${u.role === 'king' ? u.nation.R.ruler : ROLE[u.role]} · age ${u.age} · ${Math.max(0, Math.ceil(u.hp))}/${u.maxHp} hp<br><span class="dim">${u.held ? 'in your grasp' : u.flying ? 'flying!' : STATE[u.state] || u.state}${u.kills ? ` · ${u.kills} kills` : ''}</span>`;
+  return `<b>${u.name}</b> of ${nm(u.nation)}<br>${u.role === 'king' ? rulerTitle(u.nation) : ROLE[u.role]} · age ${u.age} · ${Math.max(0, Math.ceil(u.hp))}/${u.maxHp} hp<br><span class="dim">${u.held ? 'in your grasp' : u.flying ? 'flying!' : STATE[u.state] || u.state}${u.kills ? ` · ${u.kills} kills` : ''}</span>`;
 }
 
 export function inspect(html) {
