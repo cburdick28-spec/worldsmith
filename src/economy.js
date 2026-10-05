@@ -7,6 +7,7 @@ import { units, spawnUnit, killUnit, MAXU } from './units.js';
 import { leafBurst } from './effects.js';
 import { log } from './ui.js';
 import { nations, game, nm, YEAR, rel, clearTrees } from './nations.js';
+import { sfx } from './audio.js';
 import { rand, pick } from './noise.js';
 
 // ---------- goods & prices ----------
@@ -327,6 +328,7 @@ function updateEra(dt) {
   if (e !== eraState.era) {
     eraState.era = e;
     log(`🕰️ The <b>${e.name}</b> begins.`);
+    sfx('chime');
   }
   const k = 1 - Math.exp(-dt * 0.6);
   eraState.sun.lerp(new THREE.Color(e.sun), k);

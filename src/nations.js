@@ -6,6 +6,7 @@ import { leafBurst, spawnDebris } from './effects.js';
 import { log } from './ui.js';
 import { rand, pick } from './noise.js';
 import { updateInfra, noteBlocked } from './infra.js';
+import { sfx } from './audio.js';
 import { updateDisasters } from './disasters.js';
 import { updateRaids, assignEscort, raidStats } from './raids.js';
 import { initEconomy, seedFarm, updateEconomy, economyBuild, updateWorldEconomy, pickCargo, settleTrade, lawWar, warMult, GOODS } from './economy.js';
@@ -13,7 +14,7 @@ import { initEconomy, seedFarm, updateEconomy, economyBuild, updateWorldEconomy,
 export const YEAR = 4; // sim seconds per year
 export const game = { year: 1, yearT: 0, prosperity: 1 };
 export const nations = [];
-const rels = new Map();
+export const rels = new Map();
 let nextNid = 1, dipT = 0;
 
 export const RACES = {
@@ -226,6 +227,7 @@ function fallNation(n) {
   n.sites.length = 0;
   for (const m of nations) if (m !== n) { const r = rel(n, m); r.war = false; r.ally = false; }
   log(`🏚️ ${nm(n)} has fallen. Only ruins remain.`);
+  sfx('toll', n.capital.x, n.capital.z);
   refreshDiplomacy();
 }
 
@@ -271,6 +273,7 @@ export function arriveCaravan(u) {
   const dist = Math.hypot(t.gx - t.sx, t.gz - t.sz);
   const { gain, tax } = settleTrade(n, d, t.good, t.cargo, dist);
   tradeStats.trips++;
+  sfx('bell', u.x, u.z);
   const G = GOODS[t.good];
   log(`🐪 A caravan from ${nm(n)} brings ${t.cargo} ${G.icon} to ${nm(d)}: +${gain} 🪙 for ${n.place}${tax ? `, ${tax} 🪙 in tariffs for ${d.place}` : ''}.`);
   endTrade(u);
@@ -393,6 +396,7 @@ function declareWar(a, b, r) {
   if (r.ally) log(`🗡️ Betrayal! ${nm(att)} turns on its ally ${nm(def)}.`);
   r.war = true; r.ally = false; r.warT = 0; r.tension = 0;
   log(`⚔️ ${nm(att)} declares war on ${nm(def)}!`);
+  sfx('horn', def.capital.x, def.capital.z);
   for (const c of nations) {
     if (!c.alive || c === att || c === def) continue;
     if (rel(c, def).ally && !rel(c, att).war && Math.random() < 0.75) {
@@ -510,4 +514,45 @@ export function setupNations() {
   const races = ['human', 'goblin', 'elf'];
   chosen.forEach((c, i) => createNation(races[i], c.x, c.z));
   log(`🌍 The world is young. Three peoples awaken: ${nations.map(nm).join(', ')}.`);
+}
+
+// ---------- save / load ----------
+
+export function snapshotNations() {
+  return {
+    nextNid, game: { ...game },
+    rels: [...rels].map(([k, r]) => [k, { ...r }]),
+    list: nations.map(n => ({
+      id: n.id, race: n.race, place: n.place, name: n.name, alive: n.alive, founded: n.founded,
+      wood: n.wood, food: n.food, stone: n.stone, gold: n.gold, capital: n.capital,
+      kingId: n.king ? n.king.id : null,
+      houses: n.houses.map(h => h.id), sites: n.sites.map(h => h.id), farms: n.farms.map(f => f.id),
+      birthT: n.birthT, buildT: n.buildT, caravanT: n.caravanT, caravans: n.caravans, trips: n.trips,
+      law: n.law, lawT: n.lawT, crisis: n.crisis, starving: n.starving, hungerT: n.hungerT, ecoT: n.ecoT,
+    })),
+  };
+}
+
+// Rebuilds nations from a snapshot. Structures must already be restored; units are added afterwards.
+export function restoreNations(snap) {
+  nations.length = 0;
+  rels.clear();
+  nextNid = snap.nextNid;
+  Object.assign(game, snap.game);
+  for (const [k, r] of snap.rels) rels.set(k, r);
+  for (const d of snap.list) {
+    const R = RACES[d.race];
+    const n = {
+      ...d, R, css: R.color, color: new THREE.Color(R.color), units: new Set(), king: null, enemies: [], allies: [],
+      genName: () => genName(d.race),
+      houses: d.houses.map(id => structs[id]).filter(s => s && !s.dead),
+      sites: d.sites.map(id => structs[id]).filter(s => s && !s.dead),
+      farms: d.farms.map(id => structs[id]).filter(s => s && !s.dead),
+    };
+    delete n.kingId;
+    n.armor = n.color.clone().lerp(new THREE.Color('#6d727b'), 0.45);
+    nations.push(n);
+  }
+  for (const s of structs) if (s && s.nation && typeof s.nation === 'number') s.nation = nations.find(n => n.id === s.nation) || null;
+  refreshDiplomacy();
 }

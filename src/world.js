@@ -45,6 +45,7 @@ export const height = new Int16Array(W * D).fill(-1); // top solid y per column
 export const colOcc = new Int32Array(W * D);       // column footprint -> structure id
 export const structs = [null];
 export const damaged = new Set();
+export const worldInfo = { baseStructs: 0, seed: 0 };
 const dirty = new Set();
 
 export const idx = (x, y, z) => (y * D + z) * W + x;
@@ -282,6 +283,12 @@ export function generate(seed) {
     if (near) continue;
     plantTree(x, z, R, h > 21 || forest > 0.45 ? 'pine' : 'oak');
   }
+  worldInfo.baseStructs = structs.length - 1;
+  worldInfo.seed = seed;
+  markAllDirty();
+}
+
+export function markAllDirty() {
   dirty.clear();
   for (let i = 0; i < CX * CZ; i++) dirty.add(i);
 }

@@ -92,6 +92,12 @@
   .tool .k { position: absolute; top: 2px; left: 4px; font-size: 9px; color: var(--dim); }
   .tool.on .k { color: #1d1a12; }
 
+  #minimap { position: fixed; right: 12px; bottom: 150px; padding: 6px; width: 188px; }
+  .mm-wrap { position: relative; width: 176px; height: 176px; }
+  #mm { display: block; width: 176px; height: 176px; image-rendering: pixelated; cursor: crosshair; border-radius: 4px; }
+  #mm-cam { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #fff; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+  .mm-btns { display: flex; gap: 3px; margin-top: 5px; justify-content: space-between; }
+  .mm-btns button { padding: 2px 0; width: 28px; font-size: 13px; }
   #side { position: fixed; top: 12px; right: 12px; width: 260px; display: flex; flex-direction: column; gap: 8px; }
   #hint, #inspect { padding: 9px 11px; }
   #inspect { display: none; }
@@ -139,6 +145,7 @@
   #begin { margin-top: 12px; padding: 10px 28px; font: 600 15px Cinzel, serif; letter-spacing: 0.1em; background: var(--gold); color: #1d1a12; border: 0; }
 
   @media (max-width: 900px) {
+    #minimap { bottom: 230px; }
     #nations, #side .controls { display: none; }
     #chronicle { width: calc(100vw - 24px); height: 120px; bottom: 84px; }
     #toolbar { left: 12px; right: 12px; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; width: auto; }
@@ -183,10 +190,22 @@
   <div id="inspect" class="panel"></div>
   <div class="controls panel">
     <b>Camera</b>: right-drag rotate · middle-drag or Shift-drag pan · WASD move · Q/E turn · wheel zoom<br>
-    <b>Keys</b>: 1–9, 0, `, G, T, Y, U, I and H pick powers · Space pause · − / = change speed<br><b>🌾 Prosperity</b> speeds up births, chopping and building for every nation
+    <b>Map</b>: click the minimap to jump · M hides it<br><b>Keys</b>: 1–9, 0, `, G, T, Y, U, I and H pick powers · Space pause · − / = change speed<br><b>🌾 Prosperity</b> speeds up births, chopping and building for every nation
   </div>
 </div>
 
+<div id="minimap" class="panel">
+  <div class="mm-wrap"><canvas id="mm" width="160" height="160"></canvas><div id="mm-cam"></div></div>
+  <div class="mm-btns">
+    <button id="b-save" title="Save the world in this browser">💾</button>
+    <button id="b-load" title="Load the saved world">📂</button>
+    <button id="b-export" title="Download this world as a file">⬇</button>
+    <button id="b-import" title="Load a world from a file">⬆</button>
+    <button id="b-share" title="Copy a link to this world's seed">🔗</button>
+    <button id="b-mute" title="Sound on/off">🔊</button>
+  </div>
+  <input id="file-import" type="file" accept=".wsave,.txt" hidden>
+</div>
 <div id="toolbar" class="panel"></div>
 <div id="tip" class="panel"></div>
 <div id="toast"></div>

@@ -5,11 +5,14 @@ import { onUnitDeath, chopTree, placeNext, nations, game, arriveCaravan, abortCa
 import { trample, onRoadXZ, onRoadCol, ROAD_COST, ROAD_SPEED } from './roads.js';
 import { puff, sparks, arrow, spawnDebris, ignite, splash } from './effects.js';
 import { nearInn, visitInns } from './infra.js';
+import { sfx } from './audio.js';
 import { rand } from './noise.js';
 
 export const units = [];
 export const MAXU = 1200;
 let nextId = 1;
+export const setNextUnitId = n => { nextId = n; };
+export const getNextUnitId = () => nextId;
 
 export const RSTAT = {
   human: { skin: '#e9b98c', speed: 1.7, hp: 12, dmg: [2, 4], scale: 1.0, life: [56, 82], range: 1.3, legs: '#4a3a2a', weapon: '#cfd3da' },
@@ -83,7 +86,7 @@ export function setState(u, state, task = null) {
 export function damageUnit(u, dmg, by, cause) {
   if (!u.alive) return;
   u.hp -= dmg;
-  if (by) puff(u.x, u.y + 0.9, u.z, 'blood');
+  if (by) { puff(u.x, u.y + 0.9, u.z, 'blood'); sfx('clash', u.x, u.z); }
   if (u.hp <= 0) { killUnit(u, cause || 'battle', by); return; }
   if (by && by.alive && !u.possessed && u.role !== 'caravan' && u.state !== 'fight' && by.nation !== u.nation) {
     if (u.role === 'villager' && by.role === 'soldier' && Math.random() < 0.5) flee(u, by.x, by.z);
@@ -100,6 +103,7 @@ export function killUnit(u, cause, by) {
   puff(u.x, u.y + 0.8, u.z, cause === 'age' ? 'smoke' : 'blood');
   if (u.role === 'caravan') caravanLost(u, cause, by);
   if (u.role === 'raider') raiderDown(u, by);
+  if (by) sfx('death', u.x, u.z);
   onUnitDeath(u, cause, by);
 }
 
