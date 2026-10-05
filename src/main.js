@@ -5,6 +5,7 @@ import { initUnitMeshes, updateUnits, renderUnits } from './units.js';
 import { setupNations, updateNations, nations } from './nations.js';
 import { GodCam } from './camera.js';
 import { TOOLS, initPowers, updatePowers, setTool, setSpeed, isPossessing, input } from './powers.js';
+import { updateRoads } from './roads.js';
 import { initUI, updateUI, setProsperityUI } from './ui.js';
 import { game } from './nations.js';
 
@@ -78,6 +79,7 @@ function frame() {
     for (let i = 0; i < steps; i++) {
       updateNations(h);
       updateUnits(h);
+      updateRoads(h);
       updateEffects(h);
     }
   }

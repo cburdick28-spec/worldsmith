@@ -1,7 +1,8 @@
 // People: humans, goblins and elves. AI, movement, combat and rendering.
 import * as THREE from '../vendor/three.module.js';
 import { W, D, H, SEA, WATER_Y, groundTop, solid, set, get, owner, idx, inB, structs, B, BLOCK, isWaterCol } from './world.js';
-import { onUnitDeath, chopTree, placeNext, nations, game } from './nations.js';
+import { onUnitDeath, chopTree, placeNext, nations, game, arriveCaravan, abortCaravan, caravanLost } from './nations.js';
+import { trample, onRoadXZ, onRoadCol, ROAD_COST, ROAD_SPEED } from './roads.js';
 import { puff, sparks, arrow, spawnDebris, ignite, splash } from './effects.js';
 import { rand } from './noise.js';
 
@@ -96,6 +97,7 @@ export function killUnit(u, cause, by) {
   u.nation.units.delete(u);
   if (by) by.kills++;
   puff(u.x, u.y + 0.8, u.z, cause === 'age' ? 'smoke' : 'blood');
+  if (u.role === 'caravan') caravanLost(u, cause, by);
   onUnitDeath(u, cause, by);
 }
 
@@ -123,13 +125,14 @@ function moveToward(u, tx, tz, dt, mul = 1, near = 0.5) {
   const dx = tx - u.x, dz = tz - u.z, d = Math.hypot(dx, dz);
   if (d < near) return true;
   const base = Math.atan2(dz, dx);
-  const sp = Math.min(d, u.st.speed * mul * dt * (u.onFire > 0 ? 1.4 : 1));
+  const sp = Math.min(d, u.st.speed * mul * dt * (u.onFire > 0 ? 1.4 : 1) * (onRoadXZ(u.x, u.z) ? ROAD_SPEED : 1));
   for (const o of OFFS) {
     const a = base + o * u.side;
     const nx = u.x + Math.cos(a) * sp, nz = u.z + Math.sin(a) * sp;
     const g = standY(u, nx, nz);
     if (g === null) continue;
     u.x = nx; u.z = nz;
+    trample(Math.floor(nx), Math.floor(nz), dt * (u.role === 'caravan' ? 1.6 : 1));
     if (g > u.y) u.y = g;
     u.face = lerpAngle(u.face, a, Math.min(1, dt * 10));
     u.moving = true;
@@ -229,7 +232,7 @@ function findPath(u, tx, tz, near) {
       if (k >= 4 && (stepFrom(y, cx + dx, cz) < 0 || stepFrom(y, cx, cz + dz) < 0)) continue; // no corner cutting
       const ny = stepFrom(y, nx, nz);
       if (ny < 0) continue;
-      const cost = gS[c] + (k >= 4 ? 1.414 : 1) + (ny > y ? 0.4 : 0) + (ny <= SEA ? 3 : 0);
+      const cost = gS[c] + ((k >= 4 ? 1.414 : 1) + (ny > y ? 0.4 : 0) + (ny <= SEA ? 3 : 0)) * (onRoadCol(ni) ? ROAD_COST : 1);
       if (seen[ni] !== stamp || cost < gS[ni]) {
         seen[ni] = stamp; gS[ni] = cost; fromC[ni] = c; nodeY[ni] = ny;
         hpush(ni, cost + octile(nx, nz, gx, gz) * HW);
@@ -327,6 +330,10 @@ function decide(u) {
   const n = u.nation;
   const enemies = n.enemies;
   u.think = rand(0.4, 1.2);
+  if (u.role === 'caravan') {
+    if (u.trade) { setState(u, 'trade'); return; } // e.g. after a scuffle: back on the road
+    u.role = 'villager';
+  }
   if (u.role === 'soldier' && enemies.length) {
     const t = nearestEnemyUnit(u, 32, enemies);
     if (t) { setState(u, 'fight'); u.target = t; return; }
@@ -396,6 +403,15 @@ function act(u, dt) {
     case 'flee': {
       const r = navigate(u, u.tx, u.tz, dt, u.state === 'flee' ? 1.35 : 1);
       if (r) { setState(u, 'idle'); u.think = rand(0.5, 2.5); }
+      break;
+    }
+    case 'trade': {
+      const t = u.trade;
+      if (!t || !t.dest.alive || !t.dest.houses.length || u.nation.enemies.includes(t.dest)) { abortCaravan(u); break; }
+      const d = dist(u, t.gx, t.gz);
+      const r = navigate(u, t.gx, t.gz, dt, 1.1, 4.5);
+      if (r === true || (r === 'stuck' && d < 9)) arriveCaravan(u);
+      else if (r === 'stuck') abortCaravan(u);
       break;
     }
     case 'chop': {
@@ -573,6 +589,7 @@ export function pickUnit(o, d, maxT = Infinity) {
 let M;
 const rig = {};
 const GOLD = new THREE.Color('#f2c443');
+const PACK = new THREE.Color('#c9a15f');
 const tmpC = new THREE.Color();
 
 export function initUnitMeshes(scene) {
@@ -598,6 +615,7 @@ export function initUnitMeshes(scene) {
     weapon: mk(weapon, MAXU),
     crown: mk(new THREE.BoxGeometry(0.42, 0.13, 0.42), 80),
     ear: mk(ear, MAXU * 2),
+    pack: mk(new THREE.BoxGeometry(0.5, 0.42, 0.34), 96),
   };
   rig.root = new THREE.Object3D();
   const add = (name, x, y, z) => { const o = new THREE.Object3D(); o.position.set(x, y, z); rig.root.add(o); rig[name] = o; };
@@ -605,11 +623,12 @@ export function initUnitMeshes(scene) {
   add('body', 0, 0.83, 0); add('head', 0, 1.29, 0);
   add('weapon', 0.3, 0.85, 0.08); add('crown', 0, 1.52, 0);
   add('earL', -0.24, 1.33, -0.02); add('earR', 0.24, 1.33, -0.02);
+  add('pack', 0, 0.95, -0.3);
   rig.earL.rotation.y = 0.6; rig.earR.rotation.y = -0.6;
 }
 
 export function renderUnits(time) {
-  let nu = 0, nl = 0, nw = 0, nc = 0, ne = 0;
+  let nu = 0, nl = 0, nw = 0, nc = 0, ne = 0, np = 0;
   const r = rig;
   for (const u of units) {
     if (!u.alive || u.possessed) continue;
@@ -640,6 +659,10 @@ export function renderUnits(time) {
       M.weapon.setMatrixAt(nw, r.weapon.matrixWorld);
       M.weapon.setColorAt(nw++, u.role === 'soldier' ? st.weaponC : RSTAT.goblin.legsC);
     }
+    if (u.role === 'caravan' && np < 96) {
+      M.pack.setMatrixAt(np, r.pack.matrixWorld);
+      M.pack.setColorAt(np++, tmpC.copy(n.color).lerp(PACK, 0.55));
+    }
     if (u.role === 'king' && nc < 80) {
       M.crown.setMatrixAt(nc, r.crown.matrixWorld); M.crown.setColorAt(nc++, GOLD);
     }
@@ -653,5 +676,5 @@ export function renderUnits(time) {
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
   };
-  fin(M.leg, nl); fin(M.body, nu); fin(M.head, nu); fin(M.weapon, nw); fin(M.crown, nc); fin(M.ear, ne);
+  fin(M.leg, nl); fin(M.body, nu); fin(M.head, nu); fin(M.weapon, nw); fin(M.crown, nc); fin(M.ear, ne); fin(M.pack, np);
 }

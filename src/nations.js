@@ -152,6 +152,7 @@ export function createNation(race, x, z) {
     id: nextNid++, race, R, place, name: R.realm(place), css: R.color, color: new THREE.Color(R.color),
     alive: true, wood: 24, houses: [], sites: [], capital: { x, z }, king: null, units: new Set(),
     founded: game.year, birthT: 0, buildT: rand(0, 2), enemies: [], allies: [], genName: () => genName(race),
+    caravanT: rand(8, 16), caravans: 0, trips: 0,
   };
   n.armor = n.color.clone().lerp(new THREE.Color('#6d727b'), 0.45);
   nations.push(n);
@@ -174,7 +175,7 @@ export function createNation(race, x, z) {
 function crown(n) {
   let heir = null, fallback = null;
   for (const u of n.units) {
-    if (!u.alive || u.possessed) continue;
+    if (!u.alive || u.possessed || u.role === 'caravan') continue;
     if (!fallback || u.age > fallback.age) fallback = u;
     if (u.age < 18 || u.maxAge - u.age < 12) continue;
     if (!heir || u.age > heir.age) heir = u;
@@ -218,6 +219,77 @@ function fallNation(n) {
   refreshDiplomacy();
 }
 
+// ---------- trade caravans ----------
+// A nation with a few houses and spare wood periodically sends a caravan to a peaceful
+// neighbour's capital. The trip follows (and wears down) roads; on arrival both sides gain
+// wood and relations warm. A caravan that is cut down loses its cargo.
+
+const CARAVAN_EVERY = 22;     // sim seconds between a nation's departures
+const CARAVAN_MIN_WOOD = 24;  // won't send one unless it can spare the cargo
+const CARAVAN_CARGO = 12;
+export const tradeStats = { trips: 0 };
+
+const homeHouse = n => n.houses.find(h => h.capital) || n.houses[0];
+
+function maybeSendCaravan(n, dt) {
+  n.caravanT -= dt * Math.min(game.prosperity, 4);
+  if (n.caravanT > 0) return;
+  n.caravanT = CARAVAN_EVERY * rand(0.8, 1.3);
+  if (n.caravans >= 1 || n.houses.length < 2 || n.wood < CARAVAN_MIN_WOOD || units.length >= MAXU - 8) return;
+  const partners = nations.filter(m => m.alive && m !== n && m.houses.length && !rel(n, m).war);
+  if (!partners.length) return;
+  const dest = pick(partners);
+  const from = homeHouse(n), to = homeHouse(dest);
+  const cargo = Math.min(CARAVAN_CARGO, Math.floor(n.wood * 0.4));
+  n.wood -= cargo;
+  n.caravans++;
+  const u = spawnUnit(n, from.x0 + 3.5, from.z0 + 0.5, { role: 'caravan', age: 22, y: from.g + 1 });
+  u.trade = { dest, gx: to.cx, gz: to.cz, cargo, sx: u.x, sz: u.z };
+  setState(u, 'trade');
+}
+
+function endTrade(u) {
+  if (u.trade) { u.trade = null; u.nation.caravans = Math.max(0, u.nation.caravans - 1); }
+}
+
+// Delivered: the destination gains the cargo, the origin earns it back with a profit that
+// grows with the distance travelled, and both nations' tension eases.
+export function arriveCaravan(u) {
+  const t = u.trade;
+  if (!t) return;
+  const n = u.nation, d = t.dest;
+  const dist = Math.hypot(t.gx - t.sx, t.gz - t.sz);
+  const profit = t.cargo + Math.round(dist * 0.25);
+  d.wood += t.cargo;
+  n.wood += profit;
+  n.trips++;
+  tradeStats.trips++;
+  const r = rel(n, d);
+  r.tension = Math.max(-40, r.tension - 12);
+  log(`🐪 A caravan from ${nm(n)} reaches ${nm(d)}: +${profit} 🪵 for ${n.place}, +${t.cargo} 🪵 for ${d.place}.`);
+  endTrade(u);
+  u.role = 'villager'; // the trader walks home as an ordinary villager
+  setState(u, 'idle');
+  u.think = 0.3;
+}
+
+// Called when the trip can't go on (destination fell, war broke out, no way through).
+export function abortCaravan(u) {
+  const t = u.trade;
+  if (t) u.nation.wood += t.cargo; // cargo comes home
+  endTrade(u);
+  u.role = 'villager';
+  setState(u, 'idle');
+  u.think = 0.3;
+}
+
+export function caravanLost(u, cause, by) {
+  const t = u.trade;
+  if (!t) return;
+  endTrade(u);
+  if (by) log(`🗡️ A ${nm(u.nation)} caravan was cut down by ${by.name} of ${nm(by.nation)}.`);
+}
+
 // ---------- divine gifts ----------
 
 export function giftWood(n, amount) {
@@ -253,6 +325,8 @@ function updateNation(n, dt) {
       spawnUnit(n, h.x0 + 3.5, h.z0 + 0.5, { role, age: 16, y: h.g + 1 });
     } else { n.birthT = 0; break; }
   }
+
+  maybeSendCaravan(n, dt);
 
   n.buildT += dt * Math.min(P, 10);
   if (n.buildT < 2) return;
