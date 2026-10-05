@@ -2,6 +2,7 @@
 import { nations, game, capacity, nm, giftWood, blessPeople } from './nations.js';
 import { units } from './units.js';
 import { roadStats } from './roads.js';
+import { LAWS, CRISES, cycleLaw, eraState, price, GOODS } from './economy.js';
 
 const $ = id => document.getElementById(id);
 const pending = [];
@@ -37,6 +38,7 @@ export function initUI(tools, onTool, onSpeed, onProsperity, onNew) {
     const n = nations.find(m => m.id === +b.dataset.nid && m.alive);
     if (!n) return;
     if (b.dataset.act === 'wood') { giftWood(n, 100); toast(`+100 wood for ${n.name}`); }
+    if (b.dataset.act === 'law') { cycleLaw(n); toast(`${LAWS[n.law].name}: ${LAWS[n.law].hint}`); }
     if (b.dataset.act === 'people') { const k = blessPeople(n, 5); toast(k ? `${k} new souls join ${n.name}` : 'The world is full.'); }
     updateUI();
   });
@@ -68,7 +70,7 @@ function relText(n) {
 
 export function updateUI() {
   $('year').textContent = `Year ${game.year}`;
-  $('pop').textContent = `${units.length} souls · ${Math.max(0, roadStats.tiles)} road tiles`;
+  $('pop').textContent = `${eraState.era.name} · ${units.length} souls · ${Math.max(0, roadStats.tiles)} road tiles`;
   const list = $('nations');
   const alive = nations.filter(n => n.alive);
   list.innerHTML = alive.map(n => {
@@ -79,9 +81,10 @@ export function updateUI() {
       <div class="nt">${n.name}</div>
       <div class="ns">${n.R.label} · founded Y${n.founded}</div>
       <div class="king">👑 ${k ? `${n.R.ruler} ${k.name}, age ${k.age}` : '<i>no ruler</i>'}</div>
-      <div class="stats"><span title="Population / housing">👥 ${n.units.size}/${capacity(n)}</span><span title="Soldiers">🗡 ${soldiers}</span><span title="Houses">🏠 ${n.houses.length}</span><span title="Wood">🪵 ${n.wood}</span><span title="Trade caravans completed">🐪 ${n.trips}</span></div>
+      <div class="stats"><span title="Population / housing">👥 ${n.units.size}/${capacity(n)}</span><span title="Soldiers">🗡 ${soldiers}</span><span title="Houses">🏠 ${n.houses.length}</span><span title="Wood (price ${price(n, 'wood').toFixed(1)})">🪵 ${Math.floor(n.wood)}</span><span title="Food (price ${price(n, 'food').toFixed(1)})" class="${n.starving ? 'war' : ''}">🌾 ${Math.floor(n.food)}</span><span title="Stone (price ${price(n, 'stone').toFixed(1)})">🪨 ${Math.floor(n.stone)}</span><span title="Treasury">🪙 ${Math.floor(n.gold)}</span><span title="Farms">🚜 ${n.farms.length}</span><span title="Trade caravans completed">🐪 ${n.trips}</span></div>
       <div class="rel">${relText(n)}</div>
-      <div class="gifts"><button data-act="wood" data-nid="${n.id}" title="Gift 100 wood">+100 🪵</button><button data-act="people" data-nid="${n.id}" title="Bless with 5 new villagers">+5 👥</button></div>
+      <div class="rel" title="${LAWS[n.law].hint}">${LAWS[n.law].icon} ${LAWS[n.law].name}${n.crisis ? ` · <b>${CRISES[n.crisis.kind].icon} ${CRISES[n.crisis.kind].name}</b>` : ''}${n.starving ? ' · <span class="war">☠️ starving</span>' : ''}</div>
+      <div class="gifts"><button data-act="law" data-nid="${n.id}" title="Decree a different law">📜 Decree</button><button data-act="wood" data-nid="${n.id}" title="Gift 100 wood">+100 🪵</button><button data-act="people" data-nid="${n.id}" title="Bless with 5 new villagers">+5 👥</button></div>
     </div>`;
   }).join('') || '<div class="nation"><i>No nations remain. Use a spawn tool to begin anew.</i></div>';
 }

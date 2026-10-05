@@ -6,6 +6,7 @@ import { setupNations, updateNations, nations } from './nations.js';
 import { GodCam } from './camera.js';
 import { TOOLS, initPowers, updatePowers, setTool, setSpeed, isPossessing, input } from './powers.js';
 import { updateRoads } from './roads.js';
+import { eraState } from './economy.js';
 import { initUI, updateUI, setProsperityUI } from './ui.js';
 import { game } from './nations.js';
 
@@ -26,7 +27,8 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xc4dcec, 170, 400);
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1000);
 
-scene.add(new THREE.HemisphereLight(0xd8ecff, 0x6b5a45, 1.15));
+const hemi = new THREE.HemisphereLight(0xd8ecff, 0x6b5a45, 1.15);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1dc, 2.3);
 sun.position.set(W / 2 - 70, 120, D / 2 - 55);
 sun.target.position.set(W / 2, 0, D / 2);
@@ -89,6 +91,8 @@ function frame() {
   rebuildDirty(14);
   renderUnits(time);
   updateVisuals(dt, simDt);
+  sun.color.copy(eraState.sun); sun.intensity = eraState.si;
+  hemi.color.copy(eraState.hemi); hemi.intensity = eraState.hi;
   water.material.opacity = 0.76 + Math.sin(time * 0.8) * 0.03;
   uiT -= dt;
   if (uiT <= 0) { uiT = 0.4; updateUI(); }

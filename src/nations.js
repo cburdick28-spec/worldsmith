@@ -5,6 +5,7 @@ import { units, spawnUnit, killUnit, setState, MAXU } from './units.js';
 import { leafBurst, spawnDebris } from './effects.js';
 import { log } from './ui.js';
 import { rand, pick } from './noise.js';
+import { initEconomy, seedFarm, updateEconomy, economyBuild, updateWorldEconomy, pickCargo, settleTrade, lawWar, warMult, GOODS } from './economy.js';
 
 export const YEAR = 4; // sim seconds per year
 export const game = { year: 1, yearT: 0, prosperity: 1 };
@@ -108,7 +109,7 @@ function ruinHouse(s) {
   detachHouse(s);
 }
 
-function clearTrees(x0, z0, x1, z1, n) {
+export function clearTrees(x0, z0, x1, z1, n) {
   for (let i = 1; i < structs.length; i++) {
     const s = structs[i];
     if (s.dead || s.kind !== 'tree') continue;
@@ -154,6 +155,7 @@ export function createNation(race, x, z) {
     founded: game.year, birthT: 0, buildT: rand(0, 2), enemies: [], allies: [], genName: () => genName(race),
     caravanT: rand(8, 16), caravans: 0, trips: 0,
   };
+  initEconomy(n);
   n.armor = n.color.clone().lerp(new THREE.Color('#6d727b'), 0.45);
   nations.push(n);
 
@@ -164,6 +166,7 @@ export function createNation(race, x, z) {
   const h = createHouse(n, x0, z0, g, true);
   while (placeNext(h));
   n.capital = { x: h.cx, z: h.cz };
+  seedFarm(n);
 
   n.king = spawnUnit(n, x0 + 3.5, z0 + 0.5, { role: 'king', age: Math.floor(rand(24, 38)), y: g + 1 });
   for (let i = 0; i < 6; i++) spawnUnit(n, x0 + rand(0.5, 6.5), z0 + 0.5, { y: g + 1 });
@@ -195,6 +198,7 @@ const DEATHS = {
   blast: () => 'was swept away by divine wrath',
   drown: () => 'drowned',
   fall: () => 'fell to their death',
+  hunger: () => 'starved',
 };
 
 export function onUnitDeath(u, cause, by) {
@@ -212,6 +216,8 @@ function fallNation(n) {
   n.alive = false;
   for (const h of [...n.houses]) removeStruct(h, false);
   for (const st of n.sites) removeStruct(st, false);
+  for (const f of n.farms) removeStruct(f, false);
+  n.farms.length = 0;
   n.houses.length = 0;
   n.sites.length = 0;
   for (const m of nations) if (m !== n) { const r = rel(n, m); r.war = false; r.ally = false; }
@@ -225,26 +231,25 @@ function fallNation(n) {
 // wood and relations warm. A caravan that is cut down loses its cargo.
 
 const CARAVAN_EVERY = 22;     // sim seconds between a nation's departures
-const CARAVAN_MIN_WOOD = 24;  // won't send one unless it can spare the cargo
 const CARAVAN_CARGO = 12;
 export const tradeStats = { trips: 0 };
 
 const homeHouse = n => n.houses.find(h => h.capital) || n.houses[0];
 
 function maybeSendCaravan(n, dt) {
-  n.caravanT -= dt * Math.min(game.prosperity, 4);
+  n.caravanT -= dt * Math.min(game.prosperity, 4) * (n.law === 'free' ? 1.6 : 1);
   if (n.caravanT > 0) return;
   n.caravanT = CARAVAN_EVERY * rand(0.8, 1.3);
-  if (n.caravans >= 1 || n.houses.length < 2 || n.wood < CARAVAN_MIN_WOOD || units.length >= MAXU - 8) return;
+  if (n.caravans >= 1 || n.houses.length < 2 || units.length >= MAXU - 8) return;
   const partners = nations.filter(m => m.alive && m !== n && m.houses.length && !rel(n, m).war);
   if (!partners.length) return;
   const dest = pick(partners);
   const from = homeHouse(n), to = homeHouse(dest);
-  const cargo = Math.min(CARAVAN_CARGO, Math.floor(n.wood * 0.4));
-  n.wood -= cargo;
+  const load = pickCargo(n, dest, CARAVAN_CARGO);
+  if (!load) return;
   n.caravans++;
   const u = spawnUnit(n, from.x0 + 3.5, from.z0 + 0.5, { role: 'caravan', age: 22, y: from.g + 1 });
-  u.trade = { dest, gx: to.cx, gz: to.cz, cargo, sx: u.x, sz: u.z };
+  u.trade = { dest, gx: to.cx, gz: to.cz, cargo: load.amount, good: load.good, sx: u.x, sz: u.z };
   setState(u, 'trade');
 }
 
@@ -259,14 +264,10 @@ export function arriveCaravan(u) {
   if (!t) return;
   const n = u.nation, d = t.dest;
   const dist = Math.hypot(t.gx - t.sx, t.gz - t.sz);
-  const profit = t.cargo + Math.round(dist * 0.25);
-  d.wood += t.cargo;
-  n.wood += profit;
-  n.trips++;
+  const { gain, tax } = settleTrade(n, d, t.good, t.cargo, dist);
   tradeStats.trips++;
-  const r = rel(n, d);
-  r.tension = Math.max(-40, r.tension - 12);
-  log(`🐪 A caravan from ${nm(n)} reaches ${nm(d)}: +${profit} 🪵 for ${n.place}, +${t.cargo} 🪵 for ${d.place}.`);
+  const G = GOODS[t.good];
+  log(`🐪 A caravan from ${nm(n)} brings ${t.cargo} ${G.icon} to ${nm(d)}: +${gain} 🪙 for ${n.place}${tax ? `, ${tax} 🪙 in tariffs for ${d.place}` : ''}.`);
   endTrade(u);
   u.role = 'villager'; // the trader walks home as an ordinary villager
   setState(u, 'idle');
@@ -276,7 +277,7 @@ export function arriveCaravan(u) {
 // Called when the trip can't go on (destination fell, war broke out, no way through).
 export function abortCaravan(u) {
   const t = u.trade;
-  if (t) u.nation.wood += t.cargo; // cargo comes home
+  if (t) u.nation[t.good] += t.cargo; // cargo comes home
   endTrade(u);
   u.role = 'villager';
   setState(u, 'idle');
@@ -319,19 +320,21 @@ function updateNation(n, dt) {
   n.birthT += dt * P;
   while (n.birthT >= n.R.birth) {
     n.birthT -= n.R.birth;
-    if (n.units.size < cap && n.houses.length && units.length < MAXU) {
+    if (n.units.size < cap && n.houses.length && units.length < MAXU && !n.starving && n.food > 0) {
       const h = pick(n.houses);
-      const role = n.enemies.length && Math.random() < n.R.warRatio ? 'soldier' : 'villager';
+      const role = n.enemies.length && Math.random() < n.R.warRatio * lawWar(n) ? 'soldier' : 'villager';
       spawnUnit(n, h.x0 + 3.5, h.z0 + 0.5, { role, age: 16, y: h.g + 1 });
     } else { n.birthT = 0; break; }
   }
 
+  updateEconomy(n, dt);
   maybeSendCaravan(n, dt);
 
   n.buildT += dt * Math.min(P, 10);
   if (n.buildT < 2) return;
   n.buildT = 0;
   n.sites = n.sites.filter(st => !st.dead && !st.built);
+  economyBuild(n);
   const maxSites = P >= 3 ? Math.min(6, 1 + Math.floor(P / 3)) : 1;
   const pending = n.sites.length * n.R.perHouse;
   if (n.sites.length < maxSites && n.wood >= 8 && n.houses.length + n.sites.length < (P > 1 ? 90 : 45) &&
@@ -347,7 +350,7 @@ function updateNation(n, dt) {
     }
   }
   // conscription
-  const want = n.enemies.length ? Math.ceil(n.units.size * n.R.warRatio) : 0;
+  const want = n.enemies.length ? Math.min(n.units.size - 1, Math.ceil(n.units.size * n.R.warRatio * lawWar(n))) : 0;
   let have = 0;
   for (const u of n.units) if (u.role === 'soldier') have++;
   for (const u of n.units) {
@@ -399,7 +402,7 @@ function diplomacy(step) {
     }
     const dmin = minHouseDist(a, b);
     const aggro = (a.R.aggression + b.R.aggression) / 2;
-    r.tension += (Math.random() * 1.1 + Math.max(0, 45 - dmin) * 0.06) * aggro - (r.ally ? 1.0 : 0);
+    r.tension += (Math.random() * 1.1 + Math.max(0, 45 - dmin) * 0.06) * aggro * warMult() - (r.ally ? 1.0 : 0);
     r.tension = Math.max(-40, r.tension);
     if (r.tension >= 100) declareWar(a, b, r);
     else if (r.ally && Math.random() < 0.004) {
@@ -451,6 +454,7 @@ export function updateNations(dt) {
     for (const u of units) if (u.alive) { u.age++; if (u.age >= u.maxAge) killUnit(u, 'age'); }
   }
   for (const n of nations) if (n.alive) updateNation(n, dt);
+  updateWorldEconomy(dt);
   dipT += dt;
   if (dipT >= 1.5) { diplomacy(dipT); dipT = 0; }
   processDamaged();
