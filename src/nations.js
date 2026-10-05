@@ -5,6 +5,8 @@ import { units, spawnUnit, killUnit, setState, MAXU } from './units.js';
 import { leafBurst, spawnDebris } from './effects.js';
 import { log } from './ui.js';
 import { rand, pick } from './noise.js';
+import { updateInfra, noteBlocked } from './infra.js';
+import { updateRaids, assignEscort, raidStats } from './raids.js';
 import { initEconomy, seedFarm, updateEconomy, economyBuild, updateWorldEconomy, pickCargo, settleTrade, lawWar, warMult, GOODS } from './economy.js';
 
 export const YEAR = 4; // sim seconds per year
@@ -178,7 +180,7 @@ export function createNation(race, x, z) {
 function crown(n) {
   let heir = null, fallback = null;
   for (const u of n.units) {
-    if (!u.alive || u.possessed || u.role === 'caravan') continue;
+    if (!u.alive || u.possessed || u.role === 'caravan' || u.role === 'raider' || u.role === 'escort') continue;
     if (!fallback || u.age > fallback.age) fallback = u;
     if (u.age < 18 || u.maxAge - u.age < 12) continue;
     if (!heir || u.age > heir.age) heir = u;
@@ -251,6 +253,7 @@ function maybeSendCaravan(n, dt) {
   const u = spawnUnit(n, from.x0 + 3.5, from.z0 + 0.5, { role: 'caravan', age: 22, y: from.g + 1 });
   u.trade = { dest, gx: to.cx, gz: to.cz, cargo: load.amount, good: load.good, sx: u.x, sz: u.z };
   setState(u, 'trade');
+  assignEscort(u);
 }
 
 function endTrade(u) {
@@ -275,9 +278,10 @@ export function arriveCaravan(u) {
 }
 
 // Called when the trip can't go on (destination fell, war broke out, no way through).
-export function abortCaravan(u) {
+export function abortCaravan(u, why) {
   const t = u.trade;
   if (t) u.nation[t.good] += t.cargo; // cargo comes home
+  if (t && why === 'stuck') noteBlocked(u.nation, t.dest);
   endTrade(u);
   u.role = 'villager';
   setState(u, 'idle');
@@ -288,7 +292,20 @@ export function caravanLost(u, cause, by) {
   const t = u.trade;
   if (!t) return;
   endTrade(u);
-  if (by) log(`🗡️ A ${nm(u.nation)} caravan was cut down by ${by.name} of ${nm(by.nation)}.`);
+  if (by && by.role === 'raider') {
+    by.nation[t.good] += t.cargo;
+    if (by.raid) by.raid.phase = 'home';
+    raidStats.loot++;
+    rel(by.nation, u.nation).tension += 15;
+    log(`🏴‍☠️ Bandits of ${nm(by.nation)} plunder a caravan of ${nm(u.nation)}: ${t.cargo} ${GOODS[t.good].icon} stolen.`);
+  } else if (by) log(`🗡️ A caravan of ${nm(u.nation)} was cut down by ${by.name} of ${nm(by.nation)}.`);
+}
+
+export function raiderDown(u, by) {
+  if (by && by.nation !== u.nation && (by.role === 'escort' || by.role === 'soldier')) {
+    raidStats.repelled++;
+    if (raidStats.repelled % 3 === 1) log(`🛡️ ${by.name} of ${nm(by.nation)} cuts down a bandit of ${nm(u.nation)}.`);
+  }
 }
 
 // ---------- divine gifts ----------
@@ -455,6 +472,8 @@ export function updateNations(dt) {
   }
   for (const n of nations) if (n.alive) updateNation(n, dt);
   updateWorldEconomy(dt);
+  updateRaids(dt);
+  updateInfra(dt);
   dipT += dt;
   if (dipT >= 1.5) { diplomacy(dipT); dipT = 0; }
   processDamaged();
