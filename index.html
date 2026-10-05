@@ -190,7 +190,7 @@
   <div id="inspect" class="panel"></div>
   <div class="controls panel">
     <b>Camera</b>: right-drag rotate · middle-drag or Shift-drag pan · WASD move · Q/E turn · wheel zoom<br>
-    <b>Map</b>: click the minimap to jump · M hides it<br><b>Keys</b>: 1–9, 0, `, G, T, Y, U, I and H pick powers · Space pause · − / = change speed<br><b>🌾 Prosperity</b> speeds up births, chopping and building for every nation
+    <b>Map</b>: click the minimap to jump · M hides it<br><b>Keys</b>: 1–9, 0, `, G, T, Y, U, I, H and B pick powers · Space pause · − / = change speed<br><b>🌾 Prosperity</b> speeds up births, chopping and building for every nation
   </div>
 </div>
 
@@ -210,6 +210,15 @@
 <div id="tip" class="panel"></div>
 <div id="toast"></div>
 
+<div id="ride" style="display:none">
+  <div class="panel" style="position:fixed;bottom:90px;left:50%;transform:translateX(-50%);padding:8px 14px;text-align:center;min-width:300px">
+    <div><b>🐉 Riding a dragon</b></div>
+    <div class="hp"><div id="ride-hp" style="height:100%;background:linear-gradient(90deg,#d9573c,#f0a050);width:100%"></div></div>
+    <div class="hp"><div id="ride-fuel" style="height:100%;background:linear-gradient(90deg,#e8a020,#ffe27a);width:100%"></div></div>
+    <div class="dim">W/S dive · climb · A/D turn · Shift boost · Space or click: fire · Esc: climb down</div>
+  </div>
+</div>
+
 <div id="possess">
   <div id="crosshair"></div>
   <div id="poss-bar" class="panel">
@@ -228,6 +237,7 @@
       <li><b>✋ Hand of God</b>: tear up houses, trees, people or earth and hurl them</li>
       <li><b>☄️ Meteors, ⚡ lightning, 🔥 fire</b>: burn nations down</li>
       <li><b>⛰️ Raise and 🕳️ lower</b>: reshape the land</li>
+      <li><b>🐉 Dragons</b>: summon one and ride it, or watch wild ones burn towns</li>
       <li><b>👁️ Possess</b>: drop into a peasant and walk through the war you started</li>
     </ul>
     <button id="begin">Begin</button>

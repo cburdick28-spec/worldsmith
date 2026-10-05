@@ -6,6 +6,7 @@ import { nations, createNation, detachHouse, nm, giftWood } from './nations.js';
 import { explode, launchMeteor, lightning, igniteArea, spawnDebris, splash, sparks, debrisRoom, leafBurst } from './effects.js';
 import * as ui from './ui.js';
 import { startEarthquake, startPlague, startFlood, startVolcano, blessHarvest } from './disasters.js';
+import { spawnDragon, rideDragon, nearestDragon, isRiding } from './dragons.js';
 import { rand } from './noise.js';
 
 export const TOOLS = [
@@ -25,11 +26,12 @@ export const TOOLS = [
   { id: 'flood', key: 'U', icon: '🌊', name: 'Flood', hint: 'A great wave drowns the lowlands and sweeps away whatever stands there. The land stays under water.' },
   { id: 'volcano', key: 'I', icon: '🗻', name: 'Volcano', hint: 'Raise a volcano on dry land. It erupts with lava bombs and erupts again every few decades.' },
   { id: 'harvest', key: 'H', icon: '🌾', name: 'Harvest', hint: 'Ripen the closest nation\'s fields and bless its harvest. Hold to keep blessing.', rate: 0.9 },
+  { id: 'dragon', key: 'B', icon: '🐉', name: 'Dragon', hint: 'Click open land to call a dragon, or click near one to ride it. W/S dive and climb, A/D turn, Shift boost, Space or click for fire, Esc to climb down.' },
   { id: 'possess', key: '0', icon: '👁️', name: 'Possess', hint: 'Click a person to walk in their body. WASD move, mouse look, Space jump, click strike, right-click build, Esc leave.' },
 ];
-const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess', KeyG: 'gift', KeyT: 'quake', KeyY: 'plague', KeyU: 'flood', KeyI: 'volcano', KeyH: 'harvest' };
+const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess', KeyG: 'gift', KeyT: 'quake', KeyY: 'plague', KeyU: 'flood', KeyI: 'volcano', KeyH: 'harvest', KeyB: 'dragon' };
 
-export const input = { keys: {}, speed: 1, lastSpeed: 1 };
+export const input = { keys: {}, speed: 1, lastSpeed: 1, fire: false };
 let tool = TOOLS[1];
 let camera, godCam, canvas, scene;
 const ndc = new THREE.Vector2();
@@ -107,12 +109,12 @@ function structBox(s) {
   return x0 === Infinity ? null : [x0, y0, z0, x1, y1, z1];
 }
 
-const RING = { gift: 2, meteor: 6, lightning: 2, fire: 2.2, raise: 2.6, lower: 2.6, human: 1.6, goblin: 1.6, elf: 1.6, quake: 15, plague: 7, flood: 15, volcano: 8, harvest: 3 };
+const RING = { gift: 2, meteor: 6, lightning: 2, fire: 2.2, raise: 2.6, lower: 2.6, human: 1.6, goblin: 1.6, elf: 1.6, quake: 15, plague: 7, flood: 15, volcano: 8, harvest: 3, dragon: 4 };
 
 function updateIndicators() {
   ringMesh.visible = false;
   boxMesh.visible = false;
-  if (poss || held) return;
+  if (poss || held || isRiding()) return;
   const r = RING[tool.id];
   if (r && hover.point) {
     ringMesh.visible = true;
@@ -139,7 +141,7 @@ function houseHTML(s) {
 }
 
 function updateTooltip() {
-  if (poss || held) { ui.hideTip(); return; }
+  if (poss || held || isRiding()) { ui.hideTip(); return; }
   if (hover.unit) ui.showTip(mx, my, ui.unitHTML(hover.unit));
   else if (hover.struct && hover.struct.kind === 'house' && (tool.id === 'inspect' || tool.id === 'grab')) ui.showTip(mx, my, houseHTML(hover.struct));
   else ui.hideTip();
@@ -209,6 +211,13 @@ function primary(start) {
       if (!n) { ui.toast('There is no nation to bless.'); return; }
       sparks(h.point.x, h.point.y + 1, h.point.z, 14);
       if (start) ui.toast(`${n.name}'s fields ripen`);
+      break;
+    }
+    case 'dragon': {
+      if (!start || !h.point) return;
+      const near = nearestDragon(h.point.x, h.point.z, 16);
+      if (near) rideDragon(near);
+      else if (!spawnDragon(h.point.x, h.point.z)) ui.toast('Only three dragons can live in this world.');
       break;
     }
     case 'possess':
@@ -532,6 +541,7 @@ export function initPowers(opts) {
 
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerdown', e => {
+    if (isRiding()) { if (e.button === 0) input.fire = true; return; }
     if (poss) {
       if (document.pointerLockElement !== canvas) { canvas.requestPointerLock?.(); return; }
       if (e.button === 0) possAttack(); else if (e.button === 2) possPlace();
@@ -580,6 +590,7 @@ export function initPowers(opts) {
   window.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT') return;
     input.keys[e.code] = true;
+    if (isRiding()) { if (e.code === 'Space') e.preventDefault(); return; }
     if (e.code === 'Escape' && poss) { exitPossess(); return; }
     if (poss) { if (e.code === 'Space') e.preventDefault(); return; }
     if (KEYMAP[e.code]) setTool(KEYMAP[e.code]);
@@ -596,6 +607,7 @@ export function initPowers(opts) {
 
 export function updatePowers(dt, simDt, time) {
   if (poss) updatePossess(dt);
+  else if (isRiding()) { /* the dragon has the controls */ }
   else {
     updateHover();
     if (leftDown && tool.rate) {
