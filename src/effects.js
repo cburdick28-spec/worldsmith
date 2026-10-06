@@ -185,6 +185,12 @@ export function igniteArea(x, y, z, r, chance = 0.6) {
   return n;
 }
 
+export function extinguishArea(x, y, z, r) {
+  let n = 0;
+  for (const [i, b] of burning) if ((b.x - x) ** 2 + (b.z - z) ** 2 < r * r && Math.abs(b.y - y) < r + 4) { burning.delete(i); n++; }
+  return n;
+}
+
 export const isBurning = (x, y, z) => inB(x, y, z) && burning.has(idx(x, y, z));
 export const fireCount = () => burning.size;
 

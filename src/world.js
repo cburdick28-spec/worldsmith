@@ -306,6 +306,8 @@ const FACES = [
 const AO = [1, 0.8, 0.66, 0.52];
 const chunkMeshes = [];
 let chunkMat;
+const seasonU = { uAutumn: { value: 0 }, uSnow: { value: 0 } };
+export function setSeasonLook(autumn, snow) { seasonU.uAutumn.value = autumn; seasonU.uSnow.value = snow; }
 
 const solidM = (x, y, z) => {
   if (y < 0) return 1;
@@ -368,6 +370,21 @@ function buildChunk(c) {
 
 export function initChunks(scene) {
   chunkMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  // seasons: tint leaves/grass in autumn and frost up-facing surfaces in winter
+  chunkMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uAutumn = seasonU.uAutumn; sh.uniforms.uSnow = seasonU.uSnow;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN; uniform float uAutumn; uniform float uSnow;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+      float gr = diffuseColor.g - max(diffuseColor.r, diffuseColor.b);
+      float leaf = smoothstep(0.02, 0.1, gr);
+      float hsh = fract(sin(dot(floor(vWP.xz * 0.5), vec2(12.9898, 78.233))) * 43758.5453);
+      vec3 fall = mix(vec3(0.86, 0.45, 0.1), vec3(0.72, 0.2, 0.08), step(0.7, hsh));
+      diffuseColor.rgb = mix(diffuseColor.rgb, fall * (0.7 + 0.5 * dot(diffuseColor.rgb, vec3(0.33))), leaf * uAutumn * 0.85);
+      float snowy = smoothstep(0.55, 0.9, vWN.y) * smoothstep(SEA_LVL, SEA_LVL + 0.8, vWP.y) * uSnow;
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.96, 1.0), snowy * 0.92);`.replaceAll('SEA_LVL', (SEA + 0.6).toFixed(2)));
+  };
   for (let c = 0; c < CX * CZ; c++) {
     const mesh = new THREE.Mesh(new THREE.BufferGeometry(), chunkMat);
     mesh.castShadow = true;

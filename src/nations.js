@@ -5,6 +5,8 @@ import { units, spawnUnit, killUnit, setState, groundUnder, MAXU } from './units
 import { leafBurst, spawnDebris } from './effects.js';
 import { log } from './ui.js';
 import { updateBuildings } from './buildings.js';
+import { updateHeroes, heroFell } from './heroes.js';
+import { updateGlory } from './glory.js';
 import { rand, pick } from './noise.js';
 import { updateInfra, noteBlocked } from './infra.js';
 import { sfx } from './audio.js';
@@ -248,6 +250,7 @@ const DEATHS = {
 
 export function onUnitDeath(u, cause, by) {
   const n = u.nation;
+  heroFell(u);
   if (n.king !== u) return;
   n.king = null;
   let how = DEATHS[cause] ? DEATHS[cause](u) : 'perished';
@@ -529,6 +532,8 @@ export function updateNations(dt) {
   updatePolitics(dt);
   updateRuins(dt);
   updateBuildings(dt);
+  updateHeroes();
+  updateGlory();
   dipT += dt;
   if (dipT >= 1.5) { diplomacy(dipT); dipT = 0; }
   processDamaged();
