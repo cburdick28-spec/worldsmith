@@ -84,6 +84,65 @@ export const TYPES = {
       return p;
     },
   },
+  // ---- wonders: one per people, built late and at great cost ----
+  worldtree: {
+    name: 'World Tree', icon: '🌳', size: 11, wood: 70, stone: 50, gold: 60, minHouses: 12, race: 'elf', wonder: true,
+    max: () => 1,
+    plan(n, x0, z0, g) {
+      const p = [], cx = x0 + 5, cz = z0 + 5;
+      const hash = (x, y, z) => { let h = (x * 374761393 + y * 668265263 + z * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+      for (let y = g; y < g + 3; y++) for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) if (Math.abs(i) + Math.abs(j) < 4) p.push([cx + i, y, cz + j, B.LOG]); // roots
+      for (let y = g + 3; y < g + 19; y++) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) p.push([cx + i, y, cz + j, B.LOG]);
+      for (const [dx, dy, dz, R] of [[0, 21, 0, 5.4], [-3, 18, 2, 3.4], [3, 18, -2, 3.4], [2, 18, 3, 3], [-2, 19, -3, 3]]) {
+        for (let y = -6; y <= 6; y++) for (let i = -6; i <= 6; i++) for (let j = -6; j <= 6; j++) {
+          if (i * i + y * y * 1.3 + j * j > R * R) continue;
+          const X = cx + dx + i, Y = g + dy + y, Z = cz + dz + j;
+          if (X < x0 - 1 || X > x0 + 11 || Z < z0 - 1 || Z > z0 + 11) continue;
+          if (Y < g + 14 || hash(X, Y, Z) > 0.9) continue;
+          if (Math.abs(X - cx) <= 1 && Math.abs(Z - cz) <= 1 && Y < g + 19) continue;
+          p.push([X, Y, Z, hash(X + 3, Y, Z) > 0.965 ? B.GOLD : B.LEAVES]);
+        }
+      }
+      const seen = new Set(), out = [];
+      for (const v of p) { const k = v[0] + ',' + v[1] + ',' + v[2]; if (!seen.has(k)) { seen.add(k); out.push(v); } }
+      return out.sort((a, b) => a[1] - b[1]);
+    },
+  },
+  ziggurat: {
+    name: 'Great Ziggurat', icon: '🔺', size: 13, wood: 70, stone: 60, gold: 60, minHouses: 12, race: 'goblin', wonder: true,
+    max: () => 1,
+    plan(n, x0, z0, g) {
+      const p = [];
+      for (let lvl = 0; lvl < 5; lvl++) {
+        const s = 13 - lvl * 2;
+        slab(p, x0 + lvl, z0 + lvl, s, g + lvl, lvl % 2 ? B.BASALT : B.MUD);
+      }
+      for (let y = g; y < g + 5; y++) p.push([x0 + 6, y, z0 - 1, B.PLANK]); // a ramp stub on the front
+      for (const [i, j] of [[5, 5], [7, 5], [5, 7], [7, 7]]) for (let y = g + 5; y < g + 9; y++) p.push([x0 + i, y, z0 + j, B.BASALT]);
+      p.push([x0 + 6, g + 5, z0 + 6, B.GOLD], [x0 + 6, g + 6, z0 + 6, B.SCORCH], [x0 + 6, g + 7, z0 + 6, B.GOLD]);
+      for (const [i, j] of [[5, 5], [7, 7]]) { p.push([x0 + i, g + 9, z0 + j, n.R.roof], [x0 + i, g + 10, z0 + j, n.R.roof]); }
+      return p;
+    },
+    smoke: [6, 9, 6],
+  },
+  spire: {
+    name: 'Grand Spire', icon: '⛪', size: 9, wood: 70, stone: 70, gold: 60, minHouses: 12, race: 'human', wonder: true,
+    max: () => 1,
+    plan(n, x0, z0, g) {
+      const p = [];
+      slab(p, x0, z0, 9, g, B.MARBLE);
+      for (let y = g + 1; y < g + 6; y++) ring(p, x0, z0, 9, y, B.STONE, (i, j) => y < g + 4 && i === 4 && j === 0);
+      for (const [i, j] of [[0, 0], [8, 0], [0, 8], [8, 8]]) for (let y = g + 6; y < g + 10; y++) p.push([x0 + i, y, z0 + j, B.LOG]);
+      slab(p, x0, z0, 9, g + 6, B.PLANK, 1);
+      for (let y = g + 7; y < g + 15; y++) ring(p, x0 + 2, z0 + 2, 5, y, y % 4 === 2 ? B.MARBLE : B.STONE, (i, j) => y % 3 === 0 && i === 2 && j === 0);
+      for (let y = g + 15; y < g + 23; y++) ring(p, x0 + 3, z0 + 3, 3, y, B.STONE);
+      slab(p, x0 + 3, z0 + 3, 3, g + 23, n.R.roof);
+      slab(p, x0 + 3, z0 + 3, 3, g + 24, n.R.roof, 0);
+      for (let y = g + 25; y < g + 29; y++) p.push([x0 + 4, y, z0 + 4, y > g + 27 ? B.GOLD : n.R.roof]);
+      for (const [i, j] of [[0, 4], [8, 4], [4, 8]]) for (let y = g + 6; y < g + 12; y++) p.push([x0 + i, y, z0 + j, B.STONE]); // buttresses
+      return p;
+    },
+  },
   tower: {
     name: 'watchtower', icon: '🗼', size: 3, wood: 10, stone: 8, minHouses: 5,
     max: n => Math.min(4, Math.floor(n.houses.length / 4)),
@@ -140,7 +199,7 @@ export const TYPES = {
     },
   },
 };
-const ORDER = ['well', 'fishing', 'market', 'windmill', 'tower', 'forge', 'barracks', 'temple'];
+const ORDER = ['worldtree', 'ziggurat', 'spire', 'well', 'fishing', 'market', 'windmill', 'tower', 'forge', 'barracks', 'temple'];
 
 // ---------- bookkeeping ----------
 
@@ -167,7 +226,8 @@ function findPlot(n, T) {
   const s = T.size;
   const homes = n.houses.filter(h => !h.dead);
   if (!homes.length) return null;
-  for (let tries = 0; tries < 90; tries++) {
+  const rough = T.wonder ? 4 : 2;
+  for (let tries = 0; tries < (T.wonder ? 260 : 90); tries++) {
     const allowTrees = tries >= 40;
     const base = pick(homes);
     const a = Math.random() * Math.PI * 2, d = rand(7, 14 + tries * (T.coastal ? 0.45 : 0.15));
@@ -182,7 +242,7 @@ function findPlot(n, T) {
       if (h < SEA + 1) { ok = false; break; }
       mn = Math.min(mn, h); mx = Math.max(mx, h);
     }
-    if (!ok || mx - mn > 2) continue;
+    if (!ok || mx - mn > rough) continue;
     if (T.coastal && !nearWater(x0, z0, s)) continue;
     // keep a gap from every other house and civic building
     const cx = x0 + s / 2, cz = z0 + s / 2, gap = s / 2 + 5;
@@ -207,7 +267,11 @@ export function buildCivic(n, type, spot) {
   clearTrees(x0 - 1, z0 - 1 - zf, x0 + s, z0 + s, n);
   const g = flatten(x0, z0, s);
   const st = newStruct('civic', { type, nation: n, x0, z0, g, cx: x0 + s / 2, cz: z0 + s / 2, size: s, shootT: rand(0, 1) });
-  st.plan = T.plan(n, x0, z0, g);
+  { // one block per cell (later entries win), lowest layers first
+    const cell = new Map();
+    for (const v of T.plan(n, x0, z0, g)) cell.set(v[0] + ',' + v[1] + ',' + v[2], v);
+    st.plan = [...cell.values()].sort((a, b) => a[1] - b[1]);
+  }
   claimFoot(st, x0, z0 - zf, x0 + s - 1, z0 + s - 1);
   for (const [x, y, z, t] of st.plan) placeStruct(st, x, y, z, t);
   st.placed = st.plan.length; st.total = st.alive; st.built = true;
@@ -221,6 +285,8 @@ export function buildCivic(n, type, spot) {
 
 function wants(n, type) {
   const T = TYPES[type];
+  if (T.race && n.race !== T.race) return false;
+  if (T.wonder && n.units.size < 30) return false;
   if (n.houses.length < T.minHouses) return false;
   if (T.needFarms && n.farms.length < T.needFarms) return false;
   if (civicsOf(n, type).length >= T.max(n)) return false;
@@ -236,7 +302,8 @@ function tryBuild(n) {
     const st = buildCivic(n, type);
     if (!st) continue;
     const T = TYPES[type];
-    if (civicsOf(n, type).length === 1) log(`${T.icon} ${nm(n)} raises a ${T.name}.`);
+    if (T.wonder) { log(`${T.icon} ${nm(n)} completes the ${T.name}, a wonder of the age!`); sfx('chime', st.cx, st.cz, 1.4); }
+    else if (civicsOf(n, type).length === 1) log(`${T.icon} ${nm(n)} raises a ${T.name}.`);
     return;
   }
 }
@@ -259,6 +326,9 @@ function yearly() {
     for (const s of civicsOf(n)) {
       switch (s.type) {
         case 'well': cap += 2; break;
+        case 'worldtree': cap += 10; n.food += 6; n.unrest = Math.max(0, (n.unrest || 0) - 1); for (const u of n.units) if (u.alive && Math.hypot(u.x - s.cx, u.z - s.cz) < 30) u.hp = Math.min(u.maxHp, u.hp + 4); break;
+        case 'ziggurat': cap += 8; n.gold += 3; n.stone += 3; smokeColumn(s.x0 + 6.5, s.g + 10, s.z0 + 6.5, 4); break;
+        case 'spire': cap += 10; n.gold += 5; n.unrest = Math.max(0, (n.unrest || 0) - 1); break;
         case 'market': n.gold += 1 + Math.floor(h / 4); break;
         case 'windmill': n.food += 2 * Math.min(n.farms.length, 4); break;
         case 'fishing': n.food += 3; break;
@@ -327,7 +397,8 @@ export function resetBuildings() { civicsDirty = true; lastYear = -1; }
 const EFFECT = {
   well: 'houses 2 more people', fishing: 'brings in fish (+3 food a year)', market: 'brings in coin every year',
   windmill: 'grinds the harvest (+food from farms)', tower: 'archers pick off enemies and bandits', forge: 'smiths stone tools (+stone)',
-  barracks: 'drills villagers into soldiers', temple: 'heals the faithful, soothes unrest, collects offerings',
+  barracks: 'drills villagers into soldiers',
+  worldtree: 'a wonder: heals and feeds the realm, +10 housing', ziggurat: 'a wonder: tribute of coin and stone, +8 housing', spire: 'a wonder: coin and calm, +10 housing', temple: 'heals the faithful, soothes unrest, collects offerings',
 };
 export function civicHTML(s) {
   const T = TYPES[s.type];

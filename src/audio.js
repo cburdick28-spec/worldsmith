@@ -51,9 +51,17 @@ function startAmbient() {
   ff.type = 'bandpass'; ff.frequency.value = 2600; ff.Q.value = 1.2;
   fireGain = ctx.createGain(); fireGain.gain.value = 0;
   f.connect(ff); ff.connect(fireGain); fireGain.connect(master); f.start();
-  // birds
+  // rain: a steady hiss that follows the weather
+  const rn = noiseSrc(), rf = ctx.createBiquadFilter();
+  rf.type = 'highpass'; rf.frequency.value = 2200;
+  rainGain = ctx.createGain(); rainGain.gain.value = 0;
+  rn.connect(rf); rf.connect(rainGain); rainGain.connect(master); rn.start();
+  // birds by day, crickets by night
   const chirp = () => {
-    if (ctx && !muted && ctx.state === 'running') {
+    if (ctx && !muted && ctx.state === 'running' && ambience.rain < 0.3 && ambience.night > 0.6) {
+      const base = 4200 + Math.random() * 500;
+      for (let i = 0; i < 4; i++) tone(base, base * 1.02, 0.05, 0.02, 'square', ctx.currentTime + i * 0.09);
+    } else if (ctx && !muted && ctx.state === 'running' && ambience.rain < 0.3) {
       const n = 2 + Math.floor(Math.random() * 3), base = 2200 + Math.random() * 1600;
       for (let i = 0; i < n; i++) tone(base * (1 + i * 0.06), base * 1.35, 0.1, 0.028, 'sine', ctx.currentTime + i * 0.13);
     }
@@ -62,10 +70,14 @@ function startAmbient() {
   chirp();
 }
 
+export const ambience = { rain: 0, night: 0 };
+let rainGain;
+
 // call each frame: fire level, wind with zoom
 export function updateAudio(fires, zoom) {
   if (!ctx) return;
   fireGain.gain.setTargetAtTime(Math.min(0.2, Math.sqrt(fires) * 0.012), ctx.currentTime, 0.4);
+  if (rainGain) rainGain.gain.setTargetAtTime(ambience.rain * 0.09, ctx.currentTime, 0.6);
   windGain.gain.setTargetAtTime(0.04 + Math.min(1, zoom / 160) * 0.05, ctx.currentTime, 0.8);
 }
 

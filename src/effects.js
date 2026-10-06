@@ -6,6 +6,8 @@ import { sfx } from './audio.js';
 import { rand } from './noise.js';
 
 export const fx = { shake: 0 };
+export const wet = { v: 0 };        // 0..1 rain: puts out fires
+export const blastHooks = [];       // fn(x, y, z, r) called on every explosion (monsters listen)
 let scene, flashLight, meteorLight;
 
 function dotTexture() {
@@ -192,6 +194,7 @@ function fireTick(step) {
   for (const [i, b] of burning) {
     const t = vox[i];
     if (!t || !BLOCK[t].flam) { burning.delete(i); continue; }
+    if (wet.v > 0.05 && Math.random() < wet.v * 0.6 * step) { burning.delete(i); if (Math.random() < 0.4) smokePool.spawn(b.x + 0.5, b.y + 1, b.z + 0.5, 0, 2, 0, 1.5, COL.smokeA, COL.smokeB, -0.2, 0.3, 0.5); continue; }
     b.t -= step;
     if (Math.random() < 0.55) {
       firePool.spawn(b.x + Math.random(), b.y + 0.6 + Math.random() * 0.6, b.z + Math.random(), rand(-0.4, 0.4), rand(1.5, 3), rand(-0.4, 0.4), rand(0.4, 0.9), COL.fireA, COL.fireB, -1, 0.5, 0.9);
@@ -260,6 +263,7 @@ export function carve(cx, cy, cz, r) {
 
 export function explode(x, y, z, r, opts = {}) {
   sfx('boom', x, z, r / 3);
+  for (const f of blastHooks) f(x, y, z, r);
   const removed = carve(x, y, z, r);
   const step = Math.max(1, Math.floor(removed.length / 160));
   for (let i = 0; i < removed.length; i += step) {
@@ -344,6 +348,9 @@ export function smokeColumn(x, y, z, n = 6) {
 }
 export function lavaSpray(x, y, z, n = 10, up = 6) {
   for (let i = 0; i < n; i++) firePool.spawn(x + rand(-0.4, 0.4), y, z + rand(-0.4, 0.4), rand(-3, 3), rand(up * 0.3, up), rand(-3, 3), rand(0.4, 0.9), COL.fireA, COL.fireB, 9, 0.4, 1);
+}
+export function swirlPuff(x, y, z, vx, vy, vz, life = 1.2) {
+  dustPool.spawn(x, y, z, vx, vy, vz, life, COL.dust, COL.dustB, 0, 0.3, 0.8);
 }
 export function dustCloud(x, y, z, n = 10, spread = 3) {
   for (let i = 0; i < n; i++) dustPool.spawn(x + rand(-spread, spread), y, z + rand(-spread, spread), rand(-1.5, 1.5), rand(1, 4), rand(-1.5, 1.5), rand(0.8, 1.6), COL.dust, COL.dustB, 2, 1, 0.8);
