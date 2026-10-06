@@ -9,6 +9,8 @@ import { startEarthquake, startPlague, startFlood, startVolcano, blessHarvest } 
 import { spawnDragon, rideDragon, nearestDragon, isRiding } from './dragons.js';
 import { rand } from './noise.js';
 import { civicHTML } from './buildings.js';
+import { startTornado } from './tornado.js';
+import { cycleWeather } from './sky.js';
 
 export const TOOLS = [
   { id: 'inspect', key: '`', icon: '🔍', name: 'Inspect', hint: 'Click a person or building to learn about them.' },
@@ -27,10 +29,12 @@ export const TOOLS = [
   { id: 'flood', key: 'U', icon: '🌊', name: 'Flood', hint: 'A great wave drowns the lowlands and sweeps away whatever stands there. The land stays under water.' },
   { id: 'volcano', key: 'I', icon: '🗻', name: 'Volcano', hint: 'Raise a volcano on dry land. It erupts with lava bombs and erupts again every few decades.' },
   { id: 'harvest', key: 'H', icon: '🌾', name: 'Harvest', hint: 'Ripen the closest nation\'s fields and bless its harvest. Hold to keep blessing.', rate: 0.9 },
+  { id: 'tornado', key: 'J', icon: '🌪️', name: 'Tornado', hint: 'Spin up a tornado. It wanders for half a minute, hurling people and tearing off roofs and trees.' },
+  { id: 'weather', key: 'K', icon: '⛈️', name: 'Weather', hint: 'Click to change the weather: rain (puts out fires, waters farms), then storm (lightning), then clear skies.' },
   { id: 'dragon', key: 'B', icon: '🐉', name: 'Dragon', hint: 'Click open land to call a dragon, or click near one to ride it. W/S dive and climb, A/D turn, Shift boost, Space or click for fire, Esc to climb down.' },
   { id: 'possess', key: '0', icon: '👁️', name: 'Possess', hint: 'Click a person to walk in their body. WASD move, mouse look, Space jump, click strike, right-click build, Esc leave.' },
 ];
-const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess', KeyG: 'gift', KeyT: 'quake', KeyY: 'plague', KeyU: 'flood', KeyI: 'volcano', KeyH: 'harvest', KeyB: 'dragon' };
+const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess', KeyG: 'gift', KeyT: 'quake', KeyY: 'plague', KeyU: 'flood', KeyI: 'volcano', KeyH: 'harvest', KeyB: 'dragon', KeyJ: 'tornado', KeyK: 'weather' };
 
 export const input = { keys: {}, speed: 1, lastSpeed: 1, fire: false };
 let tool = TOOLS[1];
@@ -215,11 +219,17 @@ function primary(start) {
       if (start) ui.toast(`${n.name}'s fields ripen`);
       break;
     }
+    case 'tornado':
+      if (start && h.point) startTornado(h.point.x, h.point.z);
+      break;
+    case 'weather':
+      if (start) { const k = cycleWeather(); ui.toast(k === 'clear' ? 'Skies clear' : k === 'rain' ? 'Rain sets in' : 'A storm gathers'); }
+      break;
     case 'dragon': {
       if (!start || !h.point) return;
       const near = nearestDragon(h.point.x, h.point.z, 16);
       if (near) rideDragon(near);
-      else if (!spawnDragon(h.point.x, h.point.z)) ui.toast('Only three dragons can live in this world.');
+      else if (!spawnDragon(h.point.x, h.point.z)) ui.toast('Only four dragons can live in this world.');
       break;
     }
     case 'possess':

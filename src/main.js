@@ -9,6 +9,9 @@ import { updateRoads } from './roads.js';
 import { eraState } from './economy.js';
 import { initUI, updateUI, setProsperityUI, toast } from './ui.js';
 import { initMinimap, updateMinimap } from './minimap.js';
+import { initSky, updateSky, sky, skyLabel } from './sky.js';
+import { initMonsters, updateMonsters } from './monsters.js';
+import { updateTornadoes } from './tornado.js';
 import { initFauna, updateFauna } from './fauna.js';
 import { initDragons, updateDragons, updateRideCamera, isRiding } from './dragons.js';
 import { initAudio, updateAudio, setListener, setMuted, isMuted } from './audio.js';
@@ -66,8 +69,10 @@ initEffects(scene);
 initUnitMeshes(scene);
 initDragons(scene);
 initFauna(scene);
+initMonsters(scene);
 
 const godCam = new GodCam(camera);
+initSky(scene, camera, () => (isPossessing() || isRiding() ? camera.position : godCam.target));
 initPowers({ camera, godCam, canvas: renderer.domElement, scene });
 initUI(TOOLS, setTool, setSpeed, setProsperity, () => { location.search = `?seed=${Math.floor(Math.random() * 1e9)}`; });
 if (snap) restoreSnapshot(snap); else setupNations();
@@ -125,6 +130,9 @@ addEventListener('resize', () => {
 });
 
 window.__ws = { godCam, camera, scene }; // handy for debugging and tests
+const SUNSET = new THREE.Color('#ff9150'), MOON = new THREE.Color('#8aa4de'), NIGHT_HEMI = new THREE.Color('#23305c');
+const WATER_DAY = new THREE.Color(0x2f74c4), WATER_NIGHT = new THREE.Color(0x10264d);
+const skyTop = new THREE.Color(), skyMid = new THREE.Color();
 const clock = new THREE.Clock();
 let uiT = 0, time = 0;
 function frame() {
@@ -141,9 +149,11 @@ function frame() {
       updateRoads(h);
       updateEffects(h);
       updateDragons(h, time);
+      updateTornadoes(h);
     }
   }
   updateFauna(simDt, dt, time);
+  updateMonsters(simDt, time);
   updatePowers(dt, simDt, time);
   updateMinimap(dt);
   updateAudio(fireCount(), godCam.dist);
@@ -157,13 +167,23 @@ function frame() {
     const f = isPossessing() || isRiding() ? camera.position : godCam.target;
     const tx = Math.round(f.x), tz = Math.round(f.z);
     sun.target.position.set(tx, 0, tz);
-    sun.position.set(tx - 70, 120, tz - 55);
+    sun.position.set(tx + sky.sunDir.x, sky.sunDir.y, tz + sky.sunDir.z);
   }
-  sun.color.copy(eraState.sun); sun.intensity = eraState.si;
-  hemi.color.copy(eraState.hemi); hemi.intensity = eraState.hi;
+  updateSky(simDt, dt, time);
+  sun.color.copy(eraState.sun).lerp(SUNSET, sky.warm * 0.55 * sky.dayK).lerp(MOON, sky.night);
+  sun.intensity = eraState.si * sky.sunMul;
+  hemi.color.copy(eraState.hemi).lerp(NIGHT_HEMI, sky.night * 0.85); hemi.intensity = eraState.hi * sky.hemiMul;
+  scene.fog.color.copy(sky.fogColor);
+  water.material.color.copy(WATER_DAY).lerp(WATER_NIGHT, sky.night);
   water.material.opacity = 0.76 + Math.sin(time * 0.8) * 0.03;
   uiT -= dt;
-  if (uiT <= 0) { uiT = 0.4; updateUI(); }
+  if (uiT <= 0) {
+    uiT = 0.4; updateUI();
+    skyTop.copy(sky.fogColor).multiplyScalar(0.72).lerp(MOON, sky.night * 0.05);
+    skyMid.copy(sky.fogColor).multiplyScalar(0.9);
+    document.body.style.background = `linear-gradient(#${skyTop.getHexString()} 0%, #${skyMid.getHexString()} 45%, #${sky.fogColor.getHexString()} 70%)`;
+    document.getElementById('skylabel').textContent = skyLabel();
+  }
   renderer.render(scene, camera);
 }
 frame();

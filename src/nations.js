@@ -242,6 +242,8 @@ const DEATHS = {
   fall: () => 'fell to their death',
   hunger: () => 'starved',
   plague: () => 'died of the plague',
+  tornado: () => 'was carried off by a tornado',
+  serpent: () => 'was dragged under by a sea serpent',
 };
 
 export function onUnitDeath(u, cause, by) {
