@@ -3,6 +3,7 @@ import { nations, game, capacity, nm, giftWood, blessPeople, rulerTitle } from '
 import { units } from './units.js';
 import { infra } from './infra.js';
 import { roadStats } from './roads.js';
+import { ranking } from './glory.js';
 import { LAWS, CRISES, cycleLaw, eraState, price, GOODS } from './economy.js';
 
 const $ = id => document.getElementById(id);
@@ -74,7 +75,9 @@ export function updateUI() {
   $('pop').textContent = `${eraState.era.name} · ${units.length} souls · 🛣 ${Math.max(0, roadStats.tiles)} · 🌉 ${infra.bridges.length} · 🏨 ${infra.inns.length}`;
   const list = $('nations');
   const alive = nations.filter(n => n.alive);
-  list.innerHTML = alive.map(n => {
+  const rk = ranking().slice(0, 5);
+  const gloryHTML = rk.length > 1 ? `<div class="glory" title="People, houses, buildings, wonders, vassals, coin and fighting"><b>🏆 Glory</b>${rk.map((r, i) => `<span style="color:${r.n.css}">${i + 1}. ${r.n.place} <i>${r.g}</i></span>`).join('')}</div>` : '';
+  list.innerHTML = gloryHTML + alive.map(n => {
     let soldiers = 0;
     for (const u of n.units) if (u.role === 'soldier') soldiers++;
     const k = n.king;

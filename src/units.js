@@ -770,7 +770,7 @@ export function renderUnits(time) {
       M.pack.setMatrixAt(np, r.pack.matrixWorld);
       M.pack.setColorAt(np++, tmpC.copy(n.color).lerp(PACK, 0.55));
     }
-    if (u.role === 'king' && nc < 80) {
+    if ((u.role === 'king' || u.hero) && nc < 80) {
       M.crown.setMatrixAt(nc, r.crown.matrixWorld); M.crown.setColorAt(nc++, GOLD);
     }
     if (u.race !== 'human') {

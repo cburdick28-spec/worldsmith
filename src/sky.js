@@ -1,16 +1,20 @@
 // Time of day and weather: a sun/moon cycle with stars and lit windows, plus rain and storms.
 // Rain puts out fires and waters the fields; storms throw lightning.
 import * as THREE from '../vendor/three.module.js';
-import { W, D, SEA, groundTop, isWaterCol } from './world.js';
+import { W, D, SEA, groundTop, isWaterCol, setSeasonLook } from './world.js';
 import { nations, game, nm } from './nations.js';
 import { civics } from './buildings.js';
 import { lightning, wet } from './effects.js';
-import { ambience } from './audio.js';
+import { ambience, sfx } from './audio.js';
 import { log } from './ui.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
+export const SEASON_YEARS = 5;
+export const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'];
+const SEASON_ICON = ['🌱', '🌞', '🍂', '❄️'];
+export const season = { q: 0, idx: 0, autumn: 0, winter: 0 };
 export const DAY = 48; // simulated seconds per day (12 years)
 export const sky = {
   time: DAY * 0.4,           // seconds into the cycle
@@ -24,7 +28,7 @@ export const sky = {
 let scene, camera, getFocus, stars, lights, rain, lightPos, lightGeo, rainPos, lightT = 0, lastYear = -1;
 const NR = 1600;
 const drops = new Float32Array(NR * 3); // x, y, z offsets relative to the focus
-const C = { dusk: new THREE.Color('#ff9150'), moon: new THREE.Color('#8aa4de'), nightHemi: new THREE.Color('#23305c'), dayFog: new THREE.Color('#c4dcec'), nightFog: new THREE.Color('#0a1024'), duskFog: new THREE.Color('#e0a27a'), grey: new THREE.Color('#8c97a3') };
+const C = { dusk: new THREE.Color('#ff9150'), moon: new THREE.Color('#8aa4de'), nightHemi: new THREE.Color('#23305c'), dayFog: new THREE.Color('#c4dcec'), nightFog: new THREE.Color('#0a1024'), duskFog: new THREE.Color('#e0a27a'), grey: new THREE.Color('#8c97a3'), snowFog: new THREE.Color('#dfe9f3') };
 
 export function initSky(s, cam, focusFn) {
   scene = s; camera = cam; getFocus = focusFn;
@@ -70,8 +74,20 @@ export function cycleWeather() { setWeather(sky.kind === 'clear' ? 'rain' : sky.
 
 export function skyLabel() {
   const tod = sky.elev > 0.25 ? '☀️' : sky.elev > -0.12 ? (sky.t01 < 0.5 ? '🌅' : '🌇') : '🌙';
-  const wx = sky.k < 0.05 ? '' : sky.kind === 'storm' ? ' ⛈️' : ' 🌧️';
-  return tod + wx;
+  const wx = sky.k < 0.05 ? '' : sky.kind === 'storm' ? ' ⛈️' : season.winter > 0.5 ? ' 🌨️' : ' 🌧️';
+  return tod + wx + ' ' + SEASON_ICON[season.idx];
+}
+
+function seasonEvents() {
+  const y = game.year % 20;
+  if (y === 10) {
+    let any = false;
+    for (const n of nations) if (n.alive) { n.food += Math.min(25, 4 + n.farms.length * 2 + n.houses.length * 0.5); any = true; }
+    if (any) { log('🍂 Harvest festival: the granaries overflow.'); const f = getFocus(); sfx('chime', f.x, f.z, 1); }
+  } else if (y === 15) {
+    for (const n of nations) if (n.alive) n.food *= 0.92;
+    log('❄️ Winter closes in. Stores run thin.');
+  } else if (y === 0 && game.year > 0) log('🌱 Spring returns.');
 }
 
 function updateLights() {
@@ -86,7 +102,17 @@ function updateLights() {
   lightGeo.attributes.position.needsUpdate = true;
 }
 
+function updateSeason() {
+  const yf = game.year + (game.yearT || 0) / 4;
+  const q = ((yf / SEASON_YEARS) % 4 + 4) % 4;
+  season.q = q; season.idx = Math.floor(q) % 4;
+  season.autumn = smooth(1.75, 2.25, q) * (1 - smooth(2.9, 3.3, q));
+  season.winter = q >= 2.5 ? smooth(3.0, 3.4, q) : 1 - smooth(0, 0.35, q);
+  setSeasonLook(season.autumn, season.winter);
+}
+
 export function updateSky(sdt, dt, time) {
+  updateSeason();
   // ---- time of day (sim time) ----
   sky.time += sdt;
   sky.t01 = (sky.time / DAY) % 1;
@@ -122,6 +148,7 @@ export function updateSky(sdt, dt, time) {
     }
     if (game.year !== lastYear) {
       if (lastYear >= 0 && sky.k > 0.4) for (const n of nations) if (n.alive && n.farms.length) n.food += Math.min(5, n.farms.length * 1.5); // rain waters the fields
+      if (lastYear >= 0 && sdt > 0) seasonEvents();
       lastYear = game.year;
     }
   }
@@ -137,6 +164,9 @@ export function updateSky(sdt, dt, time) {
   sky.sunDir.set(-Math.cos(a) * 95, 30 + 100 * el, -50);
   sky.fogColor.copy(C.nightFog).lerp(C.dayFog, sky.dayK).lerp(C.duskFog, sky.warm * 0.55 * sky.dayK).lerp(C.grey, cloud * (0.35 + 0.65 * sky.dayK));
 
+  sky.fogColor.lerp(C.snowFog, season.winter * 0.35 * sky.dayK);
+  sky.hemiMul *= 1 - season.winter * 0.06;
+
   // ---- props ----
   const f = getFocus();
   stars.position.copy(camera.position);
@@ -147,7 +177,7 @@ export function updateSky(sdt, dt, time) {
   if (lightT <= 0 && lights.material.opacity > 0.02) { lightT = 1.5; updateLights(); }
   const nd = Math.floor(NR * Math.min(1, sky.k * 1.15));
   if (nd > 0) {
-    const fall = 46 + sky.k * 12, wind = sky.kind === 'storm' ? 9 : 3;
+    const snow = season.winter > 0.5, fall = snow ? 9 + sky.k * 4 : 46 + sky.k * 12, wind = sky.kind === 'storm' ? 9 : 3;
     for (let i = 0; i < nd; i++) {
       let y = drops[i * 3 + 1] - fall * dt;
       let x = drops[i * 3] - wind * dt;
@@ -155,10 +185,11 @@ export function updateSky(sdt, dt, time) {
       drops[i * 3] = x; drops[i * 3 + 1] = y;
       const wx = f.x + x, wz = f.z + drops[i * 3 + 2], wy = SEA + 2 + y;
       rainPos[i * 6] = wx; rainPos[i * 6 + 1] = wy; rainPos[i * 6 + 2] = wz;
-      rainPos[i * 6 + 3] = wx + wind * 0.018; rainPos[i * 6 + 4] = wy + 1.8; rainPos[i * 6 + 5] = wz;
+      rainPos[i * 6 + 3] = wx + wind * 0.018; rainPos[i * 6 + 4] = wy + (snow ? 0.35 : 1.8); rainPos[i * 6 + 5] = wz;
     }
     rain.geometry.attributes.position.needsUpdate = true;
   }
   rain.geometry.setDrawRange(0, nd * 2);
   rain.material.opacity = 0.35 + sky.k * 0.35;
+  rain.material.color.set(season.winter > 0.5 ? 0xffffff : 0xbcd3ee);
 }

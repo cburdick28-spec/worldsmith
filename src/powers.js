@@ -3,7 +3,7 @@ import * as THREE from '../vendor/three.module.js';
 import { W, D, H, SEA, WATER_Y, B, BLOCK, raycast, get, set, solid, topAt, owner, idx, structs, removeStruct, colOcc, isWaterCol } from './world.js';
 import { units, pickUnit, setState, standY, groundUnder, damageUnit, spawnUnit } from './units.js';
 import { nations, createNation, detachHouse, nm, giftWood } from './nations.js';
-import { explode, launchMeteor, lightning, igniteArea, spawnDebris, splash, sparks, debrisRoom, leafBurst } from './effects.js';
+import { extinguishArea, explode, launchMeteor, lightning, igniteArea, spawnDebris, splash, sparks, debrisRoom, leafBurst } from './effects.js';
 import * as ui from './ui.js';
 import { startEarthquake, startPlague, startFlood, startVolcano, blessHarvest } from './disasters.js';
 import { spawnDragon, rideDragon, nearestDragon, isRiding } from './dragons.js';
@@ -11,6 +11,7 @@ import { rand } from './noise.js';
 import { civicHTML } from './buildings.js';
 import { startTornado } from './tornado.js';
 import { cycleWeather } from './sky.js';
+import { sfx } from './audio.js';
 
 export const TOOLS = [
   { id: 'inspect', key: '`', icon: '🔍', name: 'Inspect', hint: 'Click a person or building to learn about them.' },
@@ -31,10 +32,11 @@ export const TOOLS = [
   { id: 'harvest', key: 'H', icon: '🌾', name: 'Harvest', hint: 'Ripen the closest nation\'s fields and bless its harvest. Hold to keep blessing.', rate: 0.9 },
   { id: 'tornado', key: 'J', icon: '🌪️', name: 'Tornado', hint: 'Spin up a tornado. It wanders for half a minute, hurling people and tearing off roofs and trees.' },
   { id: 'weather', key: 'K', icon: '⛈️', name: 'Weather', hint: 'Click to change the weather: rain (puts out fires, waters farms), then storm (lightning), then clear skies.' },
+  { id: 'bless', key: 'N', icon: '✨', name: 'Bless', hint: 'A shower of light heals the wounded, cures plague and puts out fires. Hold to keep blessing.', rate: 0.5 },
   { id: 'dragon', key: 'B', icon: '🐉', name: 'Dragon', hint: 'Click open land to call a dragon, or click near one to ride it. W/S dive and climb, A/D turn, Shift boost, Space or click for fire, Esc to climb down.' },
   { id: 'possess', key: '0', icon: '👁️', name: 'Possess', hint: 'Click a person to walk in their body. WASD move, mouse look, Space jump, click strike, right-click build, Esc leave.' },
 ];
-const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess', KeyG: 'gift', KeyT: 'quake', KeyY: 'plague', KeyU: 'flood', KeyI: 'volcano', KeyH: 'harvest', KeyB: 'dragon', KeyJ: 'tornado', KeyK: 'weather' };
+const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess', KeyG: 'gift', KeyT: 'quake', KeyY: 'plague', KeyU: 'flood', KeyI: 'volcano', KeyH: 'harvest', KeyB: 'dragon', KeyJ: 'tornado', KeyK: 'weather', KeyN: 'bless' };
 
 export const input = { keys: {}, speed: 1, lastSpeed: 1, fire: false };
 let tool = TOOLS[1];
@@ -114,7 +116,7 @@ function structBox(s) {
   return x0 === Infinity ? null : [x0, y0, z0, x1, y1, z1];
 }
 
-const RING = { gift: 2, meteor: 6, lightning: 2, fire: 2.2, raise: 2.6, lower: 2.6, human: 1.6, goblin: 1.6, elf: 1.6, quake: 15, plague: 7, flood: 15, volcano: 8, harvest: 3, dragon: 4 };
+const RING = { gift: 2, meteor: 6, lightning: 2, fire: 2.2, raise: 2.6, lower: 2.6, human: 1.6, goblin: 1.6, elf: 1.6, quake: 15, plague: 7, flood: 15, volcano: 8, harvest: 3, bless: 7, dragon: 4 };
 
 function updateIndicators() {
   ringMesh.visible = false;
@@ -225,6 +227,24 @@ function primary(start) {
     case 'weather':
       if (start) { const k = cycleWeather(); ui.toast(k === 'clear' ? 'Skies clear' : k === 'rain' ? 'Rain sets in' : 'A storm gathers'); }
       break;
+    case 'bless': {
+      if (!h.point) return;
+      const p = h.point;
+      let healed = 0;
+      for (const u of units) {
+        if (!u.alive || u.held || Math.hypot(u.x - p.x, u.z - p.z) > 14) continue;
+        const sick = u.plague > 0;
+        if (sick) { u.plague = 0; u.immune = 60; }
+        if (u.hp < u.maxHp || sick) { u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.5); healed++; }
+        if (u.age > 20) u.age -= 0.5;
+        if (Math.random() < 0.3) sparks(u.x, u.y + 1.5, u.z, 4);
+      }
+      extinguishArea(p.x, p.y, p.z, 14);
+      sparks(p.x, p.y + 1, p.z, 24);
+      leafBurst(p.x, p.y + 2, p.z, 14, '#fff3a8');
+      if (start) { sfx('chime', p.x, p.z, 1); ui.toast(healed ? `✨ ${healed} blessed` : '✨ A gentle light falls'); }
+      break;
+    }
     case 'dragon': {
       if (!start || !h.point) return;
       const near = nearestDragon(h.point.x, h.point.z, 16);

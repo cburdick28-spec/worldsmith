@@ -6,6 +6,7 @@ import { nations, snapshotNations, restoreNations, game } from './nations.js';
 import { roads, roadStats } from './roads.js';
 import { infra } from './infra.js';
 import { resetBuildings } from './buildings.js';
+import { applyHeroStats } from './heroes.js';
 import { snapshotVolcanoes, restoreVolcanoes } from './disasters.js';
 
 const VERSION = 2; // 2: 256x256 world
@@ -78,7 +79,7 @@ export function makeSnapshot(cam) {
       x: u.x, y: u.y, z: u.z, face: u.face, kills: u.kills,
       king: u.nation.king === u,
       trade: u.trade ? { dest: u.trade.dest.id, gx: u.trade.gx, gz: u.trade.gz, cargo: u.trade.cargo, good: u.trade.good, sx: u.trade.sx, sz: u.trade.sz } : null,
-      raid: u.raid || null, escortOf: u.escortOf ? u.escortOf.id : null,
+      hero: u.hero || null, raid: u.raid || null, escortOf: u.escortOf ? u.escortOf.id : null,
     })),
     nextUnitId: getNextUnitId(),
     volcanoes: snapshotVolcanoes(),
@@ -148,6 +149,7 @@ export function restoreSnapshot(snap) {
     if (d.king) n.king = u;
     if (d.trade) { const dest = nations.find(m => m.id === d.trade.dest); if (dest) u.trade = { ...d.trade, dest }; }
     if (d.raid) u.raid = d.raid;
+    if (d.hero) { u.hero = d.hero; applyHeroStats(u); u.hp = d.hp; u.maxAge = d.maxAge; }
   }
   setNextUnitId(snap.nextUnitId);
   for (const d of snap.units) {
