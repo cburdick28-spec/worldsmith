@@ -8,7 +8,7 @@ export const WATER_Y = SEA + 0.85;
 
 export const B = {
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, SAND: 4, SNOW: 5, LOG: 6, LEAVES: 7, PLANK: 8,
-  MUD: 9, MARBLE: 10, ROOF_H: 11, ROOF_G: 12, ROOF_E: 13, SCORCH: 14, PINE: 15, GOLD: 16, ROAD: 17, FARM: 18, WHEAT: 19, WHEAT_RIPE: 20, LAVA: 21, BASALT: 22,
+  MUD: 9, MARBLE: 10, ROOF_H: 11, ROOF_G: 12, ROOF_E: 13, SCORCH: 14, PINE: 15, GOLD: 16, ROAD: 17, FARM: 18, WHEAT: 19, WHEAT_RIPE: 20, LAVA: 21, BASALT: 22, GLASS: 23, COBBLE: 24, SHUTTER: 25, THATCH: 26, FLOWER: 27, BONE: 28,
 };
 
 // flam: chance per fire tick to spread into this block; burn: seconds it burns for
@@ -38,6 +38,12 @@ def(B.BASALT, '#3b3a42', '#2c2b33'); // cooled lava
 def(B.FARM, '#5b3d22', '#4a321c');   // tilled soil
 def(B.WHEAT, '#86b83c', '#6c9a2e', 0.2, 2);
 def(B.WHEAT_RIPE, '#e6b93a', '#c99a2a', 0.2, 2);
+def(B.GLASS, '#a6d9ec', '#8fc6dc');
+def(B.COBBLE, '#7a7e85', '#676b72');
+def(B.SHUTTER, '#4c3320', null, 0.12, 6);
+def(B.THATCH, '#c9aa5c', '#b08f45', 0.35, 3);
+def(B.FLOWER, '#e0527a', '#4f8a35', 0.1, 1.5);
+def(B.BONE, '#ece3cf', '#cfc4aa');
 
 export const vox = new Uint8Array(W * D * H);
 export const owner = new Int32Array(W * D * H);   // voxel -> structure id
@@ -208,39 +214,70 @@ export function housePlan(race, x0, z0, g, roof, capital) {
   const ax = x0 + 1, az = z0 + 1; // 5x5 walls
   const wall = race === 'human' ? B.PLANK : race === 'goblin' ? B.MUD : B.MARBLE;
   const wallH = race === 'human' ? 3 : race === 'goblin' ? 2 : 4;
+  const wy = race === 'elf' ? 2 : 1; // window row
   for (let y = g; y < g + wallH; y++) {
     for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {
       if (i > 0 && i < 4 && j > 0 && j < 4) continue;
       const corner = (i === 0 || i === 4) && (j === 0 || j === 4);
       if (j === 0 && i === 2 && y < g + 2) continue; // door
-      if (y === g + 1 + (race === 'elf' ? 1 : 0) && i === 2 && (j === 4)) continue; // back window
-      if (y === g + 1 + (race === 'elf' ? 1 : 0) && j === 2 && (i === 0 || i === 4) && race !== 'goblin') continue; // side windows
       let t = wall;
-      if (corner && race === 'human') t = B.LOG;
-      if (corner && race === 'elf') t = B.GOLD;
+      if (corner) t = race === 'human' ? B.LOG : race === 'elf' ? B.GOLD : B.BONE;
+      else if (y === g && race !== 'elf') t = B.COBBLE; // stone footing
+      else if (y === g && race === 'elf') t = B.COBBLE;
+      const winFront = j === 0 && (i === 1 || i === 3) && y === g + 1;
+      const winBack = j === 4 && i === 2 && y === g + wy;
+      const winSide = (i === 0 || i === 4) && j === 2 && y === g + wy && race !== 'goblin';
+      if (winFront && race !== 'goblin') t = B.GLASS;
+      else if (winBack || winSide) t = B.GLASS;
       plan.push([ax + i, y, az + j, t]);
     }
+  }
+  // door frame and a step
+  plan.push([ax + 2, g + 2, az, race === 'elf' ? B.GOLD : B.SHUTTER]);
+  plan.push([ax + 2, g, az - 1, B.COBBLE]);
+  if (race === 'human') {
+    plan.push([ax + 1, g + 1, az - 1, B.SHUTTER], [ax + 3, g + 1, az - 1, B.SHUTTER]); // flower boxes
+    plan.push([ax + 1, g + 2, az - 1, B.FLOWER], [ax + 3, g + 2, az - 1, B.FLOWER]);
   }
   const ry = g + wallH;
   const layer = (y, x1, z1, n, t) => {
     for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) plan.push([x1 + i, y, z1 + j, t]);
   };
+  const rect = (y, x1, z1, w, d, t) => { for (let i = 0; i < w; i++) for (let j = 0; j < d; j++) plan.push([x1 + i, y, z1 + j, t]); };
   if (race === 'human') {
-    layer(ry, x0, z0, 7, roof); layer(ry + 1, x0 + 1, z0 + 1, 5, roof); layer(ry + 2, x0 + 2, z0 + 2, 3, roof);
+    // gabled roof running east-west, with eaves, a ridge, gable ends and a chimney
+    rect(ry, x0, z0, 7, 7, roof);
+    rect(ry + 1, x0, z0 + 1, 7, 5, roof);
+    rect(ry + 2, x0, z0 + 2, 7, 3, roof);
+    rect(ry + 3, x0, z0 + 3, 7, 1, B.SHUTTER); // ridge beam
+    for (const j of [2, 3, 4]) { plan.push([x0 + 1, ry + 1, z0 + j, B.PLANK], [x0 + 5, ry + 1, z0 + j, B.PLANK]); }
+    plan.push([x0 + 1, ry + 1, z0 + 3, B.GLASS]);
+    for (let y = ry; y < ry + 5; y++) plan.push([x0 + 5, y, z0 + 4, B.COBBLE]);
+    plan.push([x0 + 5, ry + 5, z0 + 4, B.SCORCH]);
   } else if (race === 'goblin') {
-    layer(ry, x0 + 1, z0 + 1, 5, roof); layer(ry + 1, x0 + 2, z0 + 2, 3, roof);
-    plan.push([x0 + 3, ry + 2, z0 + 3, B.LOG], [x0 + 3, ry + 3, z0 + 3, B.LOG]);
+    // hide-and-thatch hut: a squat cone, skull totem and a fence stub
+    layer(ry, x0 + 1, z0 + 1, 5, roof); layer(ry + 1, x0 + 2, z0 + 2, 3, B.THATCH);
+    plan.push([x0 + 3, ry + 2, z0 + 3, B.LOG], [x0 + 3, ry + 3, z0 + 3, B.LOG], [x0 + 3, ry + 4, z0 + 3, B.BONE]);
+    plan.push([x0, g, z0 + 1, B.LOG], [x0, g + 1, z0 + 1, B.BONE], [x0 + 6, g, z0 + 1, B.LOG], [x0 + 6, g + 1, z0 + 1, B.BONE]); // bone posts by the door
+    plan.push([ax + 2, g + 2, az, B.BONE]);
   } else {
+    // elven spire: tapering marble tower with a violet roof, gold finial and arched trim
     layer(ry, x0 + 1, z0 + 1, 5, roof); layer(ry + 1, x0 + 2, z0 + 2, 3, roof);
-    plan.push([x0 + 3, ry + 2, z0 + 3, roof], [x0 + 3, ry + 3, z0 + 3, B.GOLD]);
+    plan.push([x0 + 3, ry + 2, z0 + 3, roof], [x0 + 3, ry + 3, z0 + 3, roof], [x0 + 3, ry + 4, z0 + 3, B.GOLD]);
+    for (const [i, j] of [[0, 0], [4, 0], [0, 4], [4, 4]]) plan.push([ax + i, ry, az + j, B.GOLD]); // corner finials
+    plan.push([ax + 1, g + 3, az, B.GOLD], [ax + 3, g + 3, az, B.GOLD]); // lintels
+    plan.push([ax + 2, g + 3, az, B.GLASS]);
   }
   if (capital) {
     for (let y = g; y < g + wallH + 6; y++) plan.push([x0, y, z0, B.LOG]);
     const fy = g + wallH + 4;
-    plan.push([x0 + 1, fy, z0, roof], [x0 + 2, fy, z0, roof], [x0 + 1, fy + 1, z0, roof], [x0 + 2, fy + 1, z0, roof], [x0, fy + 2, z0, B.GOLD]);
+    plan.push([x0 + 1, fy, z0, roof], [x0 + 2, fy, z0, roof], [x0 + 3, fy, z0, roof], [x0 + 1, fy + 1, z0, roof], [x0 + 2, fy + 1, z0, roof], [x0, fy + 2, z0, B.GOLD]);
   }
-  plan.sort((a, b) => a[1] - b[1]);
-  return plan;
+  const seen = new Map();
+  for (const c of plan) seen.set(c[0] + ',' + c[1] + ',' + c[2], c); // later entries win
+  const out = [...seen.values()];
+  out.sort((a, b) => a[1] - b[1]);
+  return out;
 }
 
 // ---------- terrain generation ----------

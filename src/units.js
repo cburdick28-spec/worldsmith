@@ -696,7 +696,13 @@ const GOLD = new THREE.Color('#f2c443');
 const PACK = new THREE.Color('#c9a15f');
 const BANDIT = new THREE.Color('#3a3330');
 const SICK = new THREE.Color('#7fa83a');
-const tmpC = new THREE.Color();
+const tmpC = new THREE.Color(), bodyCol = new THREE.Color();
+
+const HAIR = ['#3b2a1a', '#5a3b1f', '#8a5a2b', '#c8a24a', '#e6d28a', '#222018', '#8c3b22'];
+const ELF_HAIR = ['#f0ecd8', '#d9e6f2', '#e8c86a', '#b9a3e8', '#cfe8c4'];
+const EYE = { human: new THREE.Color('#2b2118'), goblin: new THREE.Color('#ffd23a'), elf: new THREE.Color('#3f8fd6') };
+const METAL = new THREE.Color('#8f959e'), GUARD = new THREE.Color('#d1a94a'), BELT = new THREE.Color('#4a321c'), IRON = new THREE.Color('#7d838b');
+const hairOf = u => u.race === 'elf' ? new THREE.Color(ELF_HAIR[u.id % ELF_HAIR.length]) : new THREE.Color(HAIR[(u.id * 7 + 3) % HAIR.length]);
 
 export function initUnitMeshes(scene) {
   const mat = new THREE.MeshLambertMaterial();
@@ -711,37 +717,59 @@ export function initUnitMeshes(scene) {
     scene.add(m);
     return m;
   };
-  const leg = new THREE.BoxGeometry(0.17, 0.55, 0.2); leg.translate(0, -0.275, 0);
-  const weapon = new THREE.BoxGeometry(0.07, 0.8, 0.07); weapon.translate(0, 0.32, 0);
-  const ear = new THREE.BoxGeometry(0.1, 0.12, 0.26);
+  const box = (x, y, z, ty = 0) => { const g = new THREE.BoxGeometry(x, y, z); if (ty) g.translate(0, ty, 0); return g; };
   M = {
-    leg: mk(leg, MAXU * 2),
-    body: mk(new THREE.BoxGeometry(0.46, 0.55, 0.3), MAXU),
-    head: mk(new THREE.BoxGeometry(0.36, 0.36, 0.36), MAXU),
-    weapon: mk(weapon, MAXU),
-    crown: mk(new THREE.BoxGeometry(0.42, 0.13, 0.42), 80),
-    ear: mk(ear, MAXU * 2),
-    pack: mk(new THREE.BoxGeometry(0.5, 0.42, 0.34), 96),
+    leg: mk(box(0.17, 0.55, 0.2, -0.275), MAXU * 2),
+    foot: mk(box(0.19, 0.09, 0.28), MAXU * 2),
+    body: mk(box(0.46, 0.55, 0.3), MAXU),
+    belt: mk(box(0.48, 0.07, 0.32), MAXU),
+    arm: mk(box(0.13, 0.42, 0.15, -0.21), MAXU * 2),
+    hand: mk(box(0.13, 0.11, 0.13), MAXU * 2),
+    head: mk(box(0.36, 0.36, 0.36), MAXU),
+    eye: mk(box(0.07, 0.07, 0.03), MAXU * 2),
+    nose: mk(box(0.08, 0.13, 0.11), MAXU),
+    hair: mk(box(0.4, 0.1, 0.4), MAXU),
+    hairBack: mk(box(0.4, 0.32, 0.08), MAXU),
+    helmet: mk(box(0.42, 0.22, 0.42), MAXU),
+    weapon: mk(box(0.07, 0.8, 0.07, 0.32), MAXU),
+    tip: mk(box(0.26, 0.12, 0.1), MAXU),
+    shield: mk(box(0.06, 0.36, 0.3), 1200),
+    cape: mk(box(0.38, 0.62, 0.04, -0.31), 160),
+    crown: mk(box(0.42, 0.13, 0.42), 80),
+    ear: mk(box(0.1, 0.12, 0.26), MAXU * 2),
+    pack: mk(box(0.5, 0.42, 0.34), 96),
   };
   rig.root = new THREE.Object3D();
-  const add = (name, x, y, z) => { const o = new THREE.Object3D(); o.position.set(x, y, z); rig.root.add(o); rig[name] = o; };
+  const add = (name, x, y, z, parent = rig.root) => { const o = new THREE.Object3D(); o.position.set(x, y, z); parent.add(o); rig[name] = o; return o; };
   add('legL', -0.11, 0.55, 0); add('legR', 0.11, 0.55, 0);
-  add('body', 0, 0.83, 0); add('head', 0, 1.29, 0);
-  add('weapon', 0.3, 0.85, 0.08); add('crown', 0, 1.52, 0);
+  add('footL', 0, -0.505, 0.05, rig.legL); add('footR', 0, -0.505, 0.05, rig.legR);
+  add('body', 0, 0.83, 0); add('belt', 0, 0.68, 0); add('head', 0, 1.29, 0);
+  add('armL', -0.3, 1.05, 0); add('armR', 0.3, 1.05, 0);
+  add('handL', 0, -0.45, 0, rig.armL); add('handR', 0, -0.45, 0, rig.armR);
+  add('shield', -0.1, -0.3, 0.06, rig.armL);
+  add('weapon', 0.3, 0.7, 0.1);
+  add('tip', 0, 0.68, 0, rig.weapon);
+  add('eyeL', -0.09, 1.32, 0.19); add('eyeR', 0.09, 1.32, 0.19); add('nose', 0, 1.25, 0.23);
+  add('hair', 0, 1.52, 0); add('hairBack', 0, 1.36, -0.16); add('helmet', 0, 1.5, 0);
+  add('cape', 0, 1.1, -0.18); add('crown', 0, 1.62, 0);
   add('earL', -0.24, 1.33, -0.02); add('earR', 0.24, 1.33, -0.02);
   add('pack', 0, 0.95, -0.3);
   rig.earL.rotation.y = 0.6; rig.earR.rotation.y = -0.6;
 }
 
 export function renderUnits(time) {
-  let nu = 0, nl = 0, nw = 0, nc = 0, ne = 0, np = 0;
+  const c = { leg: 0, foot: 0, body: 0, arm: 0, hand: 0, eye: 0, hair: 0, hairBack: 0, helmet: 0, weapon: 0, tip: 0, shield: 0, cape: 0, crown: 0, ear: 0, pack: 0, nose: 0 };
+  let nu = 0;
   const r = rig;
+  const put = (k, o, col) => { M[k].setMatrixAt(c[k], o.matrixWorld); M[k].setColorAt(c[k]++, col); };
   for (const u of units) {
     if (!u.alive || u.possessed) continue;
     if (nu >= MAXU) break;
-    const st = u.st;
+    const st = u.st, n = u.nation, mil = isMil(u);
     let y = u.y;
     if (u.swim > 0 && !u.flying && !u.held) y = SEA + 0.28 + Math.sin(time * 3 + u.id) * 0.07;
+    const walking = u.moving && !u.held && !u.flying;
+    if (walking) y += Math.abs(Math.sin(u.walk)) * 0.045;
     r.root.position.set(u.x, y, u.z);
     r.root.rotation.set(u.spin, Math.PI / 2 - u.face, 0);
     r.root.scale.setScalar(st.scale);
@@ -749,39 +777,65 @@ export function renderUnits(time) {
     if (u.held || u.flying) swing = Math.sin(time * 22 + u.id) * 0.9;
     r.legL.rotation.x = swing;
     r.legR.rotation.x = -swing;
+    r.body.rotation.x = walking ? 0.09 : 0;
+    r.head.rotation.x = walking ? -0.05 : Math.sin(time * 0.9 + u.id) * 0.03;
+    // arms: swing against the legs; a weapon/tool arm follows the strike
+    const tool = mil || u.state === 'chop' || u.state === 'build';
+    r.armL.rotation.x = mil && u.race !== 'elf' ? -0.7 : -swing * 1.05;
+    let ang = swing * 1.05;
+    if (tool) ang = -0.5 + 2.7 * u.swing;
+    r.armR.rotation.x = ang;
+    r.armL.rotation.z = -0.06; r.armR.rotation.z = 0.06;
+    r.weapon.position.set(0.3, 1.05 - 0.45 * Math.cos(ang), -0.45 * Math.sin(ang));
     r.weapon.rotation.x = 0.4 - u.swing * 1.9;
+    r.tip.position.y = mil ? 0.05 : 0.68;
+    r.tip.scale.set(mil ? 0.95 : 1.1, mil ? 0.45 : 1, mil ? 0.8 : 1);
+    r.tip.position.x = !mil && u.state === 'chop' ? 0.09 : 0;
+    r.cape.rotation.x = 0.12 + (walking ? 0.25 + Math.sin(u.walk * 2) * 0.1 : Math.sin(time * 1.5 + u.id) * 0.04);
     r.root.updateMatrixWorld(true);
 
-    const n = u.nation;
-    M.leg.setMatrixAt(nl, r.legL.matrixWorld); M.leg.setColorAt(nl++, st.legsC);
-    M.leg.setMatrixAt(nl, r.legR.matrixWorld); M.leg.setColorAt(nl++, st.legsC);
-    M.body.setMatrixAt(nu, r.body.matrixWorld);
-    tmpC.copy(u.role === 'raider' ? BANDIT : isMil(u) ? n.armor : n.color);
+    tmpC.copy(u.role === 'raider' ? BANDIT : mil ? n.armor : n.color);
     if (u.plague > 0) tmpC.lerp(SICK, 0.6);
     if (u.onFire > 0 && (time * 10 | 0) % 2) tmpC.lerp(GOLD, 0.6);
-    M.body.setColorAt(nu, tmpC);
-    M.head.setMatrixAt(nu, r.head.matrixWorld); M.head.setColorAt(nu, st.skinC);
+    const bodyC = bodyCol.copy(tmpC);
+    put('leg', r.legL, st.legsC); put('leg', r.legR, st.legsC);
+    put('foot', r.footL, BELT); put('foot', r.footR, BELT);
+    put('body', r.body, bodyC);
+    put('belt', r.belt, BELT);
+    put('arm', r.armL, bodyC); put('arm', r.armR, bodyC);
+    put('hand', r.handL, st.skinC); put('hand', r.handR, st.skinC);
+    put('head', r.head, st.skinC);
+    put('eye', r.eyeL, EYE[u.race] || EYE.human); put('eye', r.eyeR, EYE[u.race] || EYE.human);
+    if (u.race === 'goblin') put('nose', r.nose, tmpC.copy(st.skinC).multiplyScalar(0.85));
+    // hair or helmet
+    if (mil) {
+      put('helmet', r.helmet, u.role === 'raider' ? IRON : METAL);
+    } else if (u.race === 'goblin') {
+      if (u.id % 2) put('hair', r.hair, BANDIT);
+    } else {
+      const hc = hairOf(u);
+      put('hair', r.hair, hc);
+      if (u.race === 'elf' || u.id % 5 < 2) put('hairBack', r.hairBack, hc);
+    }
+    if (tool) {
+      put('weapon', r.weapon, mil ? st.weaponC : RSTAT.goblin.legsC);
+      put('tip', r.tip, mil ? GUARD : IRON);
+    }
+    if (mil && u.race !== 'elf' && c.shield < 1200) put('shield', r.shield, tmpC.copy(n.color).lerp(METAL, 0.2));
+    if (u.role === 'caravan' && c.pack < 96) {
+      put('pack', r.pack, tmpC.copy(n.color).lerp(PACK, 0.55));
+    }
+    if ((u.role === 'king' || u.hero) && c.crown < 80) {
+      put('crown', r.crown, GOLD);
+      if (c.cape < 160) put('cape', r.cape, tmpC.copy(n.color).lerp(new THREE.Color('#7a1d1d'), 0.5));
+    }
+    if (u.race !== 'human') { put('ear', r.earL, st.skinC); put('ear', r.earR, st.skinC); }
     nu++;
-    if (isMil(u) || u.state === 'chop' || u.state === 'build') {
-      M.weapon.setMatrixAt(nw, r.weapon.matrixWorld);
-      M.weapon.setColorAt(nw++, isMil(u) ? st.weaponC : RSTAT.goblin.legsC);
-    }
-    if (u.role === 'caravan' && np < 96) {
-      M.pack.setMatrixAt(np, r.pack.matrixWorld);
-      M.pack.setColorAt(np++, tmpC.copy(n.color).lerp(PACK, 0.55));
-    }
-    if ((u.role === 'king' || u.hero) && nc < 80) {
-      M.crown.setMatrixAt(nc, r.crown.matrixWorld); M.crown.setColorAt(nc++, GOLD);
-    }
-    if (u.race !== 'human') {
-      M.ear.setMatrixAt(ne, r.earL.matrixWorld); M.ear.setColorAt(ne++, st.skinC);
-      M.ear.setMatrixAt(ne, r.earR.matrixWorld); M.ear.setColorAt(ne++, st.skinC);
-    }
   }
-  const fin = (m, n) => {
-    m.count = n;
+  for (const k in c) {
+    const m = M[k];
+    m.count = c[k];
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
-  };
-  fin(M.leg, nl); fin(M.body, nu); fin(M.head, nu); fin(M.weapon, nw); fin(M.crown, nc); fin(M.ear, ne); fin(M.pack, np);
+  }
 }
