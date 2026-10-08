@@ -8,7 +8,7 @@ export const WATER_Y = SEA + 0.85;
 
 export const B = {
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, SAND: 4, SNOW: 5, LOG: 6, LEAVES: 7, PLANK: 8,
-  MUD: 9, MARBLE: 10, ROOF_H: 11, ROOF_G: 12, ROOF_E: 13, SCORCH: 14, PINE: 15, GOLD: 16, ROAD: 17, FARM: 18, WHEAT: 19, WHEAT_RIPE: 20, LAVA: 21, BASALT: 22, GLASS: 23, COBBLE: 24, SHUTTER: 25, THATCH: 26, FLOWER: 27, BONE: 28, PLASTER_A: 29, PLASTER_B: 30, PLASTER_C: 31, PLASTER_D: 32, PLASTER_E: 33,
+  MUD: 9, MARBLE: 10, ROOF_H: 11, ROOF_G: 12, ROOF_E: 13, SCORCH: 14, PINE: 15, GOLD: 16, ROAD: 17, FARM: 18, WHEAT: 19, WHEAT_RIPE: 20, LAVA: 21, BASALT: 22, GLASS: 23, COBBLE: 24, SHUTTER: 25, THATCH: 26, FLOWER: 27, BONE: 28, PLASTER_A: 29, PLASTER_B: 30, PLASTER_C: 31, PLASTER_D: 32, PLASTER_E: 33, BIRCH: 34, LEAVES_L: 35, BLOSSOM: 36,
 };
 
 // flam: chance per fire tick to spread into this block; burn: seconds it burns for
@@ -45,6 +45,9 @@ def(B.THATCH, '#c9aa5c', '#b08f45', 0.35, 3);
 def(B.FLOWER, '#e0527a', '#4f8a35', 0.1, 1.5);
 def(B.BONE, '#ece3cf', '#cfc4aa');
 for (const [t, c, d] of [[B.PLASTER_A, '#f1dcae', '#e4cb96'], [B.PLASTER_B, '#e8a39a', '#d98f86'], [B.PLASTER_C, '#a9c7a0', '#97b78e'], [B.PLASTER_D, '#9fc6e0', '#8bb4d0'], [B.PLASTER_E, '#efbf86', '#e0ad70']]) def(t, c, d, 0.05, 3); // pastel lime-wash walls
+def(B.BIRCH, '#e8e4d8', '#d9d4c4', 0.12, 7);
+def(B.LEAVES_L, '#86bb44', null, 0.26, 2.5);
+def(B.BLOSSOM, '#f0a9c6', null, 0.26, 2.5);
 // surface texture kinds drawn in the chunk shader: 1 brick, 2 planks, 3 thatch, 4 shingles
 for (const [t, k] of [[B.COBBLE, 1], [B.MARBLE, 1], [B.MUD, 3], [B.PLANK, 2], [B.SHUTTER, 2], [B.LOG, 2], [B.THATCH, 3], [B.ROOF_H, 4], [B.ROOF_G, 4], [B.ROOF_E, 4]]) BLOCK[t].tex = k;
 
@@ -180,13 +183,20 @@ export function plantTree(x, z, R, kind = 'oak') {
       }
     }
   } else {
-    const cy = g + th - 1;
-    for (let dy = -1; dy <= 2; dy++) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
-      if (dx * dx + dy * dy * 1.4 + dz * dz > 5.3) continue;
+    // broadleaf variants: round oak, tall birch, wide spreading oak, rare blossom tree
+    const v = R();
+    const birch = v < 0.2, blossom = v >= 0.2 && v < 0.27, wide = v >= 0.27 && v < 0.5;
+    if (birch) for (let i = 0; i < th; i++) plan[i][3] = B.BIRCH;
+    const cy = g + th - 1, rx = wide ? 3 : 2, lim = wide ? 7.5 : birch ? 4.6 : 5.3;
+    for (let dy = -1; dy <= (birch ? 3 : 2); dy++) for (let dz = -rx; dz <= rx; dz++) for (let dx = -rx; dx <= rx; dx++) {
+      const sq = wide ? 1.9 : birch ? 1.0 : 1.4;
+      if (dx * dx + dy * dy * sq + dz * dz > lim) continue;
       if (dx === 0 && dz === 0 && dy < 1) continue;
       if (R() < 0.08) continue;
-      plan.push([x + dx, cy + dy, z + dz, B.LEAVES]);
+      const t = blossom ? B.BLOSSOM : birch ? (R() < 0.5 ? B.LEAVES_L : B.LEAVES) : (dy >= 1 && R() < 0.35 ? B.LEAVES_L : B.LEAVES);
+      plan.push([x + dx, cy + dy, z + dz, t]);
     }
+    if (wide) { plan.push([x + 1, g + th - 2, z, B.LOG], [x - 1, g + th - 2, z, B.LOG]); } // side limbs
   }
   s.plan = plan;
   for (const [vx, vy, vz, t] of plan) if (inB(vx, vy, vz) && !vox[idx(vx, vy, vz)]) placeStruct(s, vx, vy, vz, t);
