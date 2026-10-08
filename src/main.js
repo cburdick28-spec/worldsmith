@@ -1,3 +1,4 @@
+import { makeWaterMaterial, updateWater } from './water.js';
 import * as THREE from '../vendor/three.module.js';
 import { W, D, SEA, WATER_Y, generate, initChunks, rebuildDirty } from './world.js';
 import { initEffects, updateEffects, updateVisuals, fx, fireCount } from './effects.js';
@@ -56,7 +57,7 @@ scene.add(sun, sun.target);
 
 const water = new THREE.Mesh(
   new THREE.PlaneGeometry(W * 4, D * 4),
-  new THREE.MeshPhongMaterial({ color: 0x2f74c4, transparent: true, opacity: 0.78, shininess: 90, specular: 0x8fb8ff, depthWrite: false }),
+  makeWaterMaterial(),
 );
 water.rotation.x = -Math.PI / 2;
 water.position.set(W / 2, WATER_Y, D / 2);
@@ -170,6 +171,7 @@ function frame() {
     sun.position.set(tx + sky.sunDir.x, sky.sunDir.y, tz + sky.sunDir.z);
   }
   updateSky(simDt, dt, time);
+  updateWater(time, dt);
   sun.color.copy(eraState.sun).lerp(SUNSET, sky.warm * 0.55 * sky.dayK).lerp(MOON, sky.night);
   sun.intensity = eraState.si * sky.sunMul;
   hemi.color.copy(eraState.hemi).lerp(NIGHT_HEMI, sky.night * 0.85); hemi.intensity = eraState.hi * sky.hemiMul;

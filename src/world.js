@@ -44,6 +44,8 @@ def(B.SHUTTER, '#4c3320', null, 0.12, 6);
 def(B.THATCH, '#c9aa5c', '#b08f45', 0.35, 3);
 def(B.FLOWER, '#e0527a', '#4f8a35', 0.1, 1.5);
 def(B.BONE, '#ece3cf', '#cfc4aa');
+// surface texture kinds drawn in the chunk shader: 1 brick, 2 planks, 3 thatch, 4 shingles
+for (const [t, k] of [[B.COBBLE, 1], [B.MARBLE, 1], [B.MUD, 3], [B.PLANK, 2], [B.SHUTTER, 2], [B.LOG, 2], [B.THATCH, 3], [B.ROOF_H, 4], [B.ROOF_G, 4], [B.ROOF_E, 4]]) BLOCK[t].tex = k;
 
 export const vox = new Uint8Array(W * D * H);
 export const owner = new Int32Array(W * D * H);   // voxel -> structure id
@@ -213,7 +215,10 @@ export function housePlan(race, x0, z0, g, roof, capital) {
   const plan = [];
   const ax = x0 + 1, az = z0 + 1; // 5x5 walls
   const wall = race === 'human' ? B.PLANK : race === 'goblin' ? B.MUD : B.MARBLE;
-  const wallH = race === 'human' ? 3 : race === 'goblin' ? 2 : 4;
+  const hv = hash3(x0, z0, 11); // per-house variety: tall, stone-ground or porch
+  const tall = race === 'human' && hv < 0.3, stoneGround = race === 'human' && hv >= 0.3 && hv < 0.6, porch = race === 'human' && hv >= 0.6 && hv < 0.8;
+  const tallOther = (race === 'elf' || race === 'goblin') && hv < 0.35; // a storey taller
+  const wallH = race === 'human' ? (tall ? 4 : 3) : race === 'goblin' ? (tallOther ? 3 : 2) : (tallOther ? 5 : 4);
   const wy = race === 'elf' ? 2 : 1; // window row
   for (let y = g; y < g + wallH; y++) {
     for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {
@@ -224,10 +229,15 @@ export function housePlan(race, x0, z0, g, roof, capital) {
       if (corner) t = race === 'human' ? B.LOG : race === 'elf' ? B.GOLD : B.BONE;
       else if (y === g && race !== 'elf') t = B.COBBLE; // stone footing
       else if (y === g && race === 'elf') t = B.COBBLE;
+      else if (race === 'human' && y === g + wallH - 1) t = B.COBBLE; // stone course under the eaves
+      else if (stoneGround && y <= g + 1) t = B.COBBLE; // stone ground floor
       const winFront = j === 0 && (i === 1 || i === 3) && y === g + 1;
       const winBack = j === 4 && i === 2 && y === g + wy;
       const winSide = (i === 0 || i === 4) && j === 2 && y === g + wy && race !== 'goblin';
+      const upRow = race === 'elf' ? g + 4 : g + 2;
+      const winUp = ((tall && race === 'human') || (tallOther && race === 'elf')) && y === upRow && ((j === 0 && (i === 1 || i === 3)) || (j === 4 && i === 2) || ((i === 0 || i === 4) && j === 2));
       if (winFront && race !== 'goblin') t = B.GLASS;
+      else if (winUp) t = B.GLASS;
       else if (winBack || winSide) t = B.GLASS;
       plan.push([ax + i, y, az + j, t]);
     }
@@ -235,7 +245,11 @@ export function housePlan(race, x0, z0, g, roof, capital) {
   // door frame and a step
   plan.push([ax + 2, g + 2, az, race === 'elf' ? B.GOLD : B.SHUTTER]);
   plan.push([ax + 2, g, az - 1, B.COBBLE]);
-  if (race === 'human') {
+  if (porch) { // pergola over the door
+    for (const i of [1, 2, 3]) plan.push([ax + i, g + 3, az - 1, B.SHUTTER]);
+    for (const i of [1, 3]) for (let y = g; y < g + 3; y++) plan.push([ax + i, y, az - 1, y < g + 3 ? B.LOG : B.SHUTTER]);
+  }
+  if (race === 'human' && !porch) {
     plan.push([ax + 1, g + 1, az - 1, B.SHUTTER], [ax + 3, g + 1, az - 1, B.SHUTTER]); // flower boxes
     plan.push([ax + 1, g + 2, az - 1, B.FLOWER], [ax + 3, g + 2, az - 1, B.FLOWER]);
   }
@@ -250,10 +264,12 @@ export function housePlan(race, x0, z0, g, roof, capital) {
     rect(ry + 1, x0, z0 + 1, 7, 5, roof);
     rect(ry + 2, x0, z0 + 2, 7, 3, roof);
     rect(ry + 3, x0, z0 + 3, 7, 1, B.SHUTTER); // ridge beam
+    for (let i = 0; i < 7; i++) { plan.push([x0 + i, ry, z0, B.SHUTTER], [x0 + i, ry, z0 + 6, B.SHUTTER]); } // dark fascia boards
+    for (let j = 1; j < 6; j++) { plan.push([x0, ry, z0 + j, B.SHUTTER], [x0 + 6, ry, z0 + j, B.SHUTTER]); }
     for (const j of [2, 3, 4]) { plan.push([x0 + 1, ry + 1, z0 + j, B.PLANK], [x0 + 5, ry + 1, z0 + j, B.PLANK]); }
     plan.push([x0 + 1, ry + 1, z0 + 3, B.GLASS]);
-    for (let y = ry; y < ry + 5; y++) plan.push([x0 + 5, y, z0 + 4, B.COBBLE]);
-    plan.push([x0 + 5, ry + 5, z0 + 4, B.SCORCH]);
+    for (let y = ry; y < ry + 5; y++) plan.push([x0 + (tall ? 1 : 5), y, z0 + 4, B.COBBLE]);
+    plan.push([x0 + (tall ? 1 : 5), ry + 5, z0 + 4, B.SCORCH]);
   } else if (race === 'goblin') {
     // hide-and-thatch hut: a squat cone, skull totem and a fence stub
     layer(ry, x0 + 1, z0 + 1, 5, roof); layer(ry + 1, x0 + 2, z0 + 2, 3, B.THATCH);
@@ -357,7 +373,7 @@ function buildChunk(c) {
   const x0 = cx * CS, z0 = cz * CS;
   let maxY = 0;
   for (let z = z0; z < z0 + CS; z++) for (let x = x0; x < x0 + CS; x++) maxY = Math.max(maxY, height[z * W + x]);
-  const pos = [], nor = [], col = [], ind = [];
+  const pos = [], nor = [], col = [], tex = [], ind = [];
   let vc = 0;
   const ao = [0, 0, 0, 0];
   for (let y = 0; y <= maxY; y++) for (let z = z0; z < z0 + CS; z++) for (let x = x0; x < x0 + CS; x++) {
@@ -388,6 +404,7 @@ function buildChunk(c) {
         nor.push(F.n[0], F.n[1], F.n[2]);
         const l = k * AO[occ];
         col.push(base.r * l, base.g * l, base.b * l);
+        tex.push(def.tex || 0);
       }
       if (ao[0] + ao[2] > ao[1] + ao[3]) ind.push(vc + 1, vc + 2, vc + 3, vc + 1, vc + 3, vc);
       else ind.push(vc, vc + 1, vc + 2, vc, vc + 2, vc + 3);
@@ -399,6 +416,7 @@ function buildChunk(c) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setAttribute('aTex', new THREE.Float32BufferAttribute(tex, 1));
   geo.setIndex(vc > 65000 ? new THREE.Uint32BufferAttribute(ind, 1) : new THREE.Uint16BufferAttribute(ind, 1));
   geo.computeBoundingSphere();
   mesh.geometry.dispose();
@@ -410,10 +428,31 @@ export function initChunks(scene) {
   // seasons: tint leaves/grass in autumn and frost up-facing surfaces in winter
   chunkMat.onBeforeCompile = (sh) => {
     sh.uniforms.uAutumn = seasonU.uAutumn; sh.uniforms.uSnow = seasonU.uSnow;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN; uniform float uAutumn; uniform float uSnow;')
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN; attribute float aTex; varying float vTex;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvTex = aTex; vWP = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN; varying float vTex; uniform float uAutumn; uniform float uSnow;\nfloat th(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }')
       .replace('#include <color_fragment>', `#include <color_fragment>
+      {
+        bool top = vWN.y > 0.5;
+        float tu = top ? vWP.x : (abs(vWN.x) > 0.5 ? vWP.z : vWP.x);
+        float tv = top ? vWP.z : vWP.y;
+        float k = vTex;
+        if (k > 0.5 && k < 1.5) { // brick courses with offset joints
+          float r = tv * 3.0, row = floor(r), bu = tu * 2.0 + mod(row, 2.0) * 0.5;
+          float mortar = 1.0 - step(0.12, fract(r)) * step(0.08, fract(bu));
+          diffuseColor.rgb *= mix(0.93 + 0.14 * th(vec2(floor(bu), row)), 0.7, mortar);
+        } else if (k > 1.5 && k < 2.5 && !top) { // horizontal planks with butt joints
+          float r = tv * 3.0, row = floor(r);
+          float seam = step(abs(fract(tu * 0.5 + th(vec2(row, 3.0))) - 0.5), 0.015);
+          diffuseColor.rgb *= (0.94 + 0.1 * th(vec2(row, floor(tu * 0.5)))) * (1.0 - 0.2 * step(fract(r), 0.1)) * (1.0 - 0.15 * seam);
+        } else if (k > 2.5 && k < 3.5) { // thatch / rough mud streaks
+          diffuseColor.rgb *= 0.86 + 0.22 * th(vec2(floor(tu * 6.0), floor(tv * 2.0 + tu)));
+        } else if (k > 3.5) { // roof shingles, staggered
+          float r = tv * 2.0, row = floor(r), cu = tu * 3.0 + mod(row, 2.0) * 0.5;
+          float edge = smoothstep(0.0, 0.2, fract(r));
+          diffuseColor.rgb *= (0.76 + 0.24 * edge) * (0.93 + 0.12 * th(vec2(floor(cu), row))) * (1.0 - 0.1 * step(fract(cu), 0.06));
+        }
+      }
       float gr = diffuseColor.g - max(diffuseColor.r, diffuseColor.b);
       float leaf = smoothstep(0.02, 0.1, gr);
       float hsh = fract(sin(dot(floor(vWP.xz * 0.5), vec2(12.9898, 78.233))) * 43758.5453);
