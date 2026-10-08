@@ -8,7 +8,7 @@ export const WATER_Y = SEA + 0.85;
 
 export const B = {
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, SAND: 4, SNOW: 5, LOG: 6, LEAVES: 7, PLANK: 8,
-  MUD: 9, MARBLE: 10, ROOF_H: 11, ROOF_G: 12, ROOF_E: 13, SCORCH: 14, PINE: 15, GOLD: 16, ROAD: 17, FARM: 18, WHEAT: 19, WHEAT_RIPE: 20, LAVA: 21, BASALT: 22, GLASS: 23, COBBLE: 24, SHUTTER: 25, THATCH: 26, FLOWER: 27, BONE: 28,
+  MUD: 9, MARBLE: 10, ROOF_H: 11, ROOF_G: 12, ROOF_E: 13, SCORCH: 14, PINE: 15, GOLD: 16, ROAD: 17, FARM: 18, WHEAT: 19, WHEAT_RIPE: 20, LAVA: 21, BASALT: 22, GLASS: 23, COBBLE: 24, SHUTTER: 25, THATCH: 26, FLOWER: 27, BONE: 28, PLASTER_A: 29, PLASTER_B: 30, PLASTER_C: 31, PLASTER_D: 32, PLASTER_E: 33,
 };
 
 // flam: chance per fire tick to spread into this block; burn: seconds it burns for
@@ -44,6 +44,7 @@ def(B.SHUTTER, '#4c3320', null, 0.12, 6);
 def(B.THATCH, '#c9aa5c', '#b08f45', 0.35, 3);
 def(B.FLOWER, '#e0527a', '#4f8a35', 0.1, 1.5);
 def(B.BONE, '#ece3cf', '#cfc4aa');
+for (const [t, c, d] of [[B.PLASTER_A, '#f1dcae', '#e4cb96'], [B.PLASTER_B, '#e8a39a', '#d98f86'], [B.PLASTER_C, '#a9c7a0', '#97b78e'], [B.PLASTER_D, '#9fc6e0', '#8bb4d0'], [B.PLASTER_E, '#efbf86', '#e0ad70']]) def(t, c, d, 0.05, 3); // pastel lime-wash walls
 // surface texture kinds drawn in the chunk shader: 1 brick, 2 planks, 3 thatch, 4 shingles
 for (const [t, k] of [[B.COBBLE, 1], [B.MARBLE, 1], [B.MUD, 3], [B.PLANK, 2], [B.SHUTTER, 2], [B.LOG, 2], [B.THATCH, 3], [B.ROOF_H, 4], [B.ROOF_G, 4], [B.ROOF_E, 4]]) BLOCK[t].tex = k;
 
@@ -214,7 +215,9 @@ export function flatten(x0, z0, size) {
 export function housePlan(race, x0, z0, g, roof, capital) {
   const plan = [];
   const ax = x0 + 1, az = z0 + 1; // 5x5 walls
-  const wall = race === 'human' ? B.PLANK : race === 'goblin' ? B.MUD : B.MARBLE;
+  const pv = hash3(x0, z0, 23); // human wall finish: bare plank or a pastel plaster
+  const humanWall = pv < 0.35 ? B.PLANK : B.PLASTER_A + Math.min(4, Math.floor((pv - 0.35) / 0.65 * 5));
+  const wall = race === 'human' ? humanWall : race === 'goblin' ? B.MUD : B.MARBLE;
   const hv = hash3(x0, z0, 11); // per-house variety: tall, stone-ground or porch
   const tall = race === 'human' && hv < 0.3, stoneGround = race === 'human' && hv >= 0.3 && hv < 0.6, porch = race === 'human' && hv >= 0.6 && hv < 0.8;
   const tallOther = (race === 'elf' || race === 'goblin') && hv < 0.35; // a storey taller
@@ -245,6 +248,14 @@ export function housePlan(race, x0, z0, g, roof, capital) {
   // door frame and a step
   plan.push([ax + 2, g + 2, az, race === 'elf' ? B.GOLD : B.SHUTTER]);
   plan.push([ax + 2, g, az - 1, B.COBBLE]);
+  if (race === 'human') {
+    plan.push([ax + 2, g + 2, az, B.LOG]); // door lintel
+    plan.push([ax + 4, g, az - 1, B.LOG], [ax + 4, g + 1, az - 1, B.GOLD]); // lantern post beside the door
+    if (hv >= 0.5) { // low garden fence with a gate gap
+      for (const i of [0, 6]) { plan.push([x0 + i, g, z0, B.LOG], [x0 + i, g + 1, z0, B.LOG]); }
+      for (const i of [1, 5]) plan.push([x0 + i, g, z0, B.PLANK]);
+    }
+  }
   if (porch) { // pergola over the door
     for (const i of [1, 2, 3]) plan.push([ax + i, g + 3, az - 1, B.SHUTTER]);
     for (const i of [1, 3]) for (let y = g; y < g + 3; y++) plan.push([ax + i, y, az - 1, y < g + 3 ? B.LOG : B.SHUTTER]);
@@ -264,10 +275,12 @@ export function housePlan(race, x0, z0, g, roof, capital) {
     rect(ry + 1, x0, z0 + 1, 7, 5, roof);
     rect(ry + 2, x0, z0 + 2, 7, 3, roof);
     rect(ry + 3, x0, z0 + 3, 7, 1, B.SHUTTER); // ridge beam
-    for (let i = 0; i < 7; i++) { plan.push([x0 + i, ry, z0, B.SHUTTER], [x0 + i, ry, z0 + 6, B.SHUTTER]); } // dark fascia boards
-    for (let j = 1; j < 6; j++) { plan.push([x0, ry, z0 + j, B.SHUTTER], [x0 + 6, ry, z0 + j, B.SHUTTER]); }
+    for (let i = 0; i < 7; i++) { plan.push([x0 + i, ry, z0, B.MARBLE], [x0 + i, ry, z0 + 6, B.MARBLE]); } // white fascia boards along the eaves
     for (const j of [2, 3, 4]) { plan.push([x0 + 1, ry + 1, z0 + j, B.PLANK], [x0 + 5, ry + 1, z0 + j, B.PLANK]); }
     plan.push([x0 + 1, ry + 1, z0 + 3, B.GLASS]);
+    if (hv >= 0.2 && hv < 0.7) { // front dormer
+      plan.push([x0 + 2, ry + 1, z0 + 1, humanWall], [x0 + 4, ry + 1, z0 + 1, humanWall], [x0 + 3, ry + 1, z0 + 1, B.GLASS], [x0 + 3, ry + 2, z0 + 1, roof], [x0 + 2, ry + 2, z0 + 1, roof], [x0 + 4, ry + 2, z0 + 1, roof]);
+    }
     for (let y = ry; y < ry + 5; y++) plan.push([x0 + (tall ? 1 : 5), y, z0 + 4, B.COBBLE]);
     plan.push([x0 + (tall ? 1 : 5), ry + 5, z0 + 4, B.SCORCH]);
   } else if (race === 'goblin') {
