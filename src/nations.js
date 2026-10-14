@@ -7,6 +7,7 @@ import { log } from './ui.js';
 import { updateBuildings } from './buildings.js';
 import { updateHeroes, heroFell } from './heroes.js';
 import { updateGlory } from './glory.js';
+import { updateTech, growthMult, tierOf } from './tech.js';
 import { rand, pick } from './noise.js';
 import { updateInfra, noteBlocked } from './infra.js';
 import { sfx } from './audio.js';
@@ -181,7 +182,7 @@ export function createNation(race, x, z, opts = {}) {
     alive: true, wood: 24, houses: [], sites: [], capital: { x, z }, king: null, units: new Set(),
     founded: game.year, birthT: 0, buildT: rand(0, 2), enemies: [], allies: [], genName: () => genName(race),
     caravanT: rand(8, 16), caravans: 0, trips: 0,
-    liege: null, title: null, unrest: 0, villageT: rand(10, 18), lastSplit: -99,
+    liege: null, title: null, unrest: 0, villageT: rand(10, 18), lastSplit: -99, tech: 0, tier: 0,
   };
   initEconomy(n);
   n.armor = n.color.clone().lerp(new THREE.Color('#6d727b'), 0.45);
@@ -383,7 +384,7 @@ function updateNation(n, dt) {
 
   const cap = capacity(n);
   const P = game.prosperity;
-  n.birthT += dt * P;
+  n.birthT += dt * P * growthMult(n) * (1 + n.units.size / 16); // bigger peoples have more babies
   while (n.birthT >= n.R.birth) {
     n.birthT -= n.R.birth;
     if (n.units.size < cap && n.houses.length && units.length < MAXU && !n.starving && n.food > 0) {
@@ -396,14 +397,14 @@ function updateNation(n, dt) {
   updateEconomy(n, dt);
   maybeSendCaravan(n, dt);
 
-  n.buildT += dt * Math.min(P, 10);
-  if (n.buildT < 2) return;
+  n.buildT += dt * Math.min(P, 10) * growthMult(n);
+  if (n.buildT < 1.4) return;
   n.buildT = 0;
   n.sites = n.sites.filter(st => !st.dead && !st.built);
   economyBuild(n);
-  const maxSites = P >= 3 ? Math.min(6, 1 + Math.floor(P / 3)) : 1;
+  const maxSites = Math.max(P >= 3 ? Math.min(6, 1 + Math.floor(P / 3)) : 1, Math.min(4, 1 + Math.floor(tierOf(n) / 2)));
   const pending = n.sites.length * n.R.perHouse;
-  if (n.sites.length < maxSites && n.wood >= 8 && n.houses.length + n.sites.length < (P > 1 ? 90 : 45) &&
+  if (n.sites.length < maxSites && n.wood >= 8 && n.houses.length + n.sites.length < (P > 1 ? 90 : 45) + 10 * tierOf(n) &&
       (n.units.size >= cap + pending - 3 || n.houses.length < 2)) {
     const spot = findSite(n, P > 1 ? 4 : 2);
     if (spot) {
@@ -532,6 +533,7 @@ export function updateNations(dt) {
   updatePolitics(dt);
   updateRuins(dt);
   updateBuildings(dt);
+  updateTech();
   updateHeroes();
   updateGlory();
   dipT += dt;
@@ -590,7 +592,7 @@ export function snapshotNations() {
       kingId: n.king ? n.king.id : null,
       houses: n.houses.map(h => h.id), sites: n.sites.map(h => h.id), farms: n.farms.map(f => f.id),
       birthT: n.birthT, buildT: n.buildT, caravanT: n.caravanT, caravans: n.caravans, trips: n.trips,
-      css: n.css, title: n.title, unrest: n.unrest, villageT: n.villageT, lastSplit: n.lastSplit, liegeId: n.liege ? n.liege.id : null, ruins: n.ruins || [],
+      css: n.css, tech: n.tech, tier: n.tier, title: n.title, unrest: n.unrest, villageT: n.villageT, lastSplit: n.lastSplit, liegeId: n.liege ? n.liege.id : null, ruins: n.ruins || [],
       law: n.law, lawT: n.lawT, crisis: n.crisis, starving: n.starving, hungerT: n.hungerT, ecoT: n.ecoT,
     })),
   };

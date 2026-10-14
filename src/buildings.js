@@ -32,7 +32,7 @@ function slab(plan, x0, z0, s, y, t, inset = 0) {
 
 export const TYPES = {
   well: {
-    name: 'well', icon: '⛲', size: 3, wood: 6, stone: 2, minHouses: 3,
+    name: 'well', tier: 0, icon: '⛲', size: 3, wood: 6, stone: 2, minHouses: 3,
     max: n => Math.min(4, Math.floor(n.houses.length / 4)),
     plan(n, x0, z0, g) {
       const p = [];
@@ -45,7 +45,7 @@ export const TYPES = {
     },
   },
   fishing: {
-    name: 'fishing hut', icon: '🎣', size: 3, wood: 6, stone: 0, minHouses: 3, coastal: true,
+    name: 'fishing hut', tier: 0, icon: '🎣', size: 3, wood: 6, stone: 0, minHouses: 3, coastal: true,
     max: () => 2,
     plan(n, x0, z0, g) {
       const p = [];
@@ -57,7 +57,7 @@ export const TYPES = {
     },
   },
   market: {
-    name: 'market', icon: '🏪', size: 5, wood: 14, stone: 4, minHouses: 5,
+    name: 'market', tier: 1, icon: '🏪', size: 5, wood: 14, stone: 4, minHouses: 5,
     max: n => Math.min(2, Math.floor(n.houses.length / 6)),
     plan(n, x0, z0, g) {
       const p = [];
@@ -69,7 +69,7 @@ export const TYPES = {
     },
   },
   windmill: {
-    name: 'windmill', icon: '🌬️', size: 5, wood: 14, stone: 6, minHouses: 4, needFarms: 2, front: 1,
+    name: 'windmill', tier: 1, icon: '🌬️', size: 5, wood: 14, stone: 6, minHouses: 4, needFarms: 2, front: 1,
     max: n => Math.min(3, Math.floor(n.farms.length / 3)),
     plan(n, x0, z0, g) {
       const p = [], w = wallOf(n);
@@ -86,7 +86,7 @@ export const TYPES = {
   },
   // ---- wonders: one per people, built late and at great cost ----
   worldtree: {
-    name: 'World Tree', icon: '🌳', size: 11, wood: 70, stone: 50, gold: 60, minHouses: 12, race: 'elf', wonder: true,
+    name: 'World Tree', tier: 3, icon: '🌳', size: 11, wood: 70, stone: 50, gold: 60, minHouses: 12, race: 'elf', wonder: true,
     max: () => 1,
     plan(n, x0, z0, g) {
       const p = [], cx = x0 + 5, cz = z0 + 5;
@@ -109,7 +109,7 @@ export const TYPES = {
     },
   },
   ziggurat: {
-    name: 'Great Ziggurat', icon: '🔺', size: 13, wood: 70, stone: 60, gold: 60, minHouses: 12, race: 'goblin', wonder: true,
+    name: 'Great Ziggurat', tier: 3, icon: '🔺', size: 13, wood: 70, stone: 60, gold: 60, minHouses: 12, race: 'goblin', wonder: true,
     max: () => 1,
     plan(n, x0, z0, g) {
       const p = [];
@@ -126,7 +126,7 @@ export const TYPES = {
     smoke: [6, 9, 6],
   },
   spire: {
-    name: 'Grand Spire', icon: '⛪', size: 9, wood: 70, stone: 70, gold: 60, minHouses: 12, race: 'human', wonder: true,
+    name: 'Grand Spire', tier: 3, icon: '⛪', size: 9, wood: 70, stone: 70, gold: 60, minHouses: 12, race: 'human', wonder: true,
     max: () => 1,
     plan(n, x0, z0, g) {
       const p = [];
@@ -144,7 +144,7 @@ export const TYPES = {
     },
   },
   tower: {
-    name: 'watchtower', icon: '🗼', size: 3, wood: 10, stone: 8, minHouses: 5,
+    name: 'watchtower', tier: 1, icon: '🗼', size: 3, wood: 10, stone: 8, minHouses: 5,
     max: n => Math.min(4, Math.floor(n.houses.length / 4)),
     plan(n, x0, z0, g) {
       const p = [];
@@ -156,7 +156,7 @@ export const TYPES = {
     },
   },
   forge: {
-    name: 'forge', icon: '⚒️', size: 5, wood: 12, stone: 10, minHouses: 6,
+    name: 'forge', tier: 2, icon: '⚒️', size: 5, wood: 12, stone: 10, minHouses: 6,
     max: () => 1,
     plan(n, x0, z0, g) {
       const p = [];
@@ -169,7 +169,7 @@ export const TYPES = {
     smoke: [4, 7, 4],
   },
   barracks: {
-    name: 'barracks', icon: '🛡️', size: 7, wood: 14, stone: 12, minHouses: 7,
+    name: 'barracks', tier: 2, icon: '🛡️', size: 7, wood: 14, stone: 12, minHouses: 7,
     max: n => (n.houses.length >= 14 ? 2 : 1),
     plan(n, x0, z0, g) {
       const p = [];
@@ -182,7 +182,7 @@ export const TYPES = {
     },
   },
   temple: {
-    name: 'temple', icon: '🏛️', size: 7, wood: 12, stone: 16, gold: 8, minHouses: 8,
+    name: 'temple', tier: 2, icon: '🏛️', size: 7, wood: 12, stone: 16, gold: 8, minHouses: 8,
     max: () => 1,
     plan(n, x0, z0, g) {
       const p = [];
@@ -287,6 +287,7 @@ function wants(n, type) {
   const T = TYPES[type];
   if (T.race && n.race !== T.race) return false;
   if (T.wonder && n.units.size < 30) return false;
+  if ((n.tier || 0) < (T.tier || 0)) return false;
   if (n.houses.length < T.minHouses) return false;
   if (T.needFarms && n.farms.length < T.needFarms) return false;
   if (civicsOf(n, type).length >= T.max(n)) return false;
@@ -348,7 +349,7 @@ function yearly() {
         }
       }
     }
-    n.bonusCap = cap;
+    n.bonusCap = cap + (n.tier || 0) * 2;
   }
 }
 
@@ -387,7 +388,7 @@ export function updateBuildings(dt) {
   towerFire(dt);
   buildT -= dt;
   if (buildT > 0) return;
-  buildT = 7;
+  buildT = 4;
   for (const n of nations) if (n.alive) tryBuild(n);
 }
 
