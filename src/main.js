@@ -10,6 +10,8 @@ import { updateRoads } from './roads.js';
 import { eraState } from './economy.js';
 import { initUI, updateUI, setProsperityUI, toast } from './ui.js';
 import { initMinimap, updateMinimap } from './minimap.js';
+import { initBorders, updateRegionHUD } from './regions.js';
+import { loadEarth } from './earth.js';
 import { initSky, updateSky, sky, skyLabel } from './sky.js';
 import { initMonsters, updateMonsters } from './monsters.js';
 import { updateTornadoes } from './tornado.js';
@@ -64,7 +66,8 @@ water.position.set(W / 2, WATER_Y, D / 2);
 water.receiveShadow = true;
 scene.add(water);
 
-generate(seed);
+const earthOk = params.get('map') !== 'random' && await loadEarth();
+generate(seed, earthOk ? 'earth' : 'random');
 initChunks(scene);
 initEffects(scene);
 initUnitMeshes(scene);
@@ -77,7 +80,7 @@ initSky(scene, camera, () => (isPossessing() || isRiding() ? camera.position : g
 initPowers({ camera, godCam, canvas: renderer.domElement, scene });
 initUI(TOOLS, setTool, setSpeed, setProsperity, () => { location.search = `?seed=${Math.floor(Math.random() * 1e9)}`; });
 if (snap) restoreSnapshot(snap); else setupNations();
-godCam.focus(nations.reduce((a, n) => a + n.capital.x, 0) / nations.length, nations.reduce((a, n) => a + n.capital.z, 0) / nations.length);
+godCam.focus(nations[0].capital.x, nations[0].capital.z);
 godCam.goal.dist = godCam.dist = 85;
 if (snap && snap.cam) {
   godCam.focus(snap.cam.x, snap.cam.z);
@@ -91,6 +94,7 @@ rebuildDirty(1000);
 document.getElementById('seed').textContent = `seed ${seed}`;
 
 initMinimap(godCam);
+initBorders(scene);
 setListener(() => (isPossessing() || isRiding() ? camera.position : godCam.target));
 const camState = () => ({ x: godCam.target.x, z: godCam.target.z, dist: godCam.goal.dist, yaw: godCam.goal.yaw, pitch: godCam.goal.pitch });
 const $ = id => document.getElementById(id);
@@ -180,7 +184,7 @@ function frame() {
   water.material.opacity = 0.76 + Math.sin(time * 0.8) * 0.03;
   uiT -= dt;
   if (uiT <= 0) {
-    uiT = 0.4; updateUI();
+    uiT = 0.4; updateUI(); updateRegionHUD(godCam.target.x, godCam.target.z);
     skyTop.copy(sky.fogColor).multiplyScalar(0.72).lerp(MOON, sky.night * 0.05);
     skyMid.copy(sky.fogColor).multiplyScalar(0.9);
     document.body.style.background = `linear-gradient(#${skyTop.getHexString()} 0%, #${skyMid.getHexString()} 45%, #${sky.fogColor.getHexString()} 70%)`;

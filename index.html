@@ -94,10 +94,16 @@
   .tool .k { position: absolute; top: 2px; left: 4px; font-size: 9px; color: var(--dim); }
   .tool.on .k { color: #1d1a12; }
 
-  #minimap { position: fixed; right: 12px; bottom: 150px; padding: 6px; width: 188px; }
-  .mm-wrap { position: relative; width: 176px; height: 176px; }
-  #mm { display: block; width: 176px; height: 176px; image-rendering: pixelated; cursor: crosshair; border-radius: 4px; }
+  #minimap { position: fixed; right: 12px; bottom: 150px; padding: 6px; width: 288px; }
+  .mm-wrap { position: relative; width: 276px; height: 138px; }
+  #mm { display: block; width: 276px; height: 138px; image-rendering: pixelated; cursor: crosshair; border-radius: 4px; }
   #mm-cam { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #fff; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+  .rl { position: absolute; transform: translate(-50%, -50%); font-size: 7px; line-height: 1; color: #fff; white-space: nowrap; pointer-events: none; display: none; text-shadow: 0 0 2px #000, 0 0 3px #000, 0 0 4px #000; letter-spacing: .2px; }
+  .rl.big { display: block; }
+  #minimap.big { left: 50%; top: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); width: min(94vw, 1180px); z-index: 30; }
+  #minimap.big .mm-wrap { width: 100%; height: auto; aspect-ratio: 2 / 1; }
+  #minimap.big #mm { width: 100%; height: 100%; }
+  #minimap.big .rl { display: block; font-size: 11px; }
   .mm-btns { display: flex; gap: 3px; margin-top: 5px; justify-content: space-between; }
   .mm-btns button { padding: 2px 0; width: 28px; font-size: 13px; }
   #side { position: fixed; top: 12px; right: 12px; width: 260px; display: flex; flex-direction: column; gap: 8px; }
@@ -161,7 +167,7 @@
 <div id="top" class="panel">
   <span class="brand">WORLDSMITH</span>
   <span id="year">Year 1</span>
-  <span id="pop"></span> <span id="skylabel"></span>
+  <span id="pop"></span> <span id="skylabel"></span> <span id="region"></span>
   <div class="speed">
     <button data-speed="0" title="Pause (Space)">❚❚</button>
     <button data-speed="1">1×</button>
@@ -192,7 +198,7 @@
   <div id="inspect" class="panel"></div>
   <div class="controls panel">
     <b>Camera</b>: right-drag rotate · middle-drag or Shift-drag pan · WASD move · Q/E turn · wheel zoom<br>
-    <b>Map</b>: click the minimap to jump · M hides it<br><b>Keys</b>: 1–9, 0, `, G, T, Y, U, I, H, B, J, K and N pick powers · Space pause · − / = change speed<br><b>🌾 Prosperity</b> speeds up births, chopping and building for every nation
+    <b>Map</b>: click the minimap to jump · M cycles map size · O toggles borders<br><b>Keys</b>: 1–9, 0, `, G, T, Y, U, I, H, B, J, K and N pick powers · Space pause · − / = change speed<br><b>🌾 Prosperity</b> speeds up births, chopping and building for every nation
   </div>
 </div>
 

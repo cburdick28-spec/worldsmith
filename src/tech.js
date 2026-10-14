@@ -33,6 +33,7 @@ export function knowledgeGain(n) {
   const civ = civicsOf(n);
   let g = 1.5 + n.houses.length * 0.4 + civ.length * 1.5;
   for (const s of civ) if (TYPES[s.type].wonder) g += 6;
+  g += (n.regionCount || 0) * 2; // every region held adds to the realm's learning
   if (n.liege) g *= 0.8;
   return g;
 }

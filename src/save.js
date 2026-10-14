@@ -10,7 +10,7 @@ import { resetTech } from './tech.js';
 import { applyHeroStats } from './heroes.js';
 import { snapshotVolcanoes, restoreVolcanoes } from './disasters.js';
 
-const VERSION = 2; // 2: 256x256 world
+const VERSION = 3; // 3: 720x288 Earth world
 
 // ---- byte helpers ----
 
