@@ -6,6 +6,7 @@ import { nations, snapshotNations, restoreNations, game } from './nations.js';
 import { roads, roadStats } from './roads.js';
 import { infra } from './infra.js';
 import { resetBuildings } from './buildings.js';
+import { resetTech } from './tech.js';
 import { applyHeroStats } from './heroes.js';
 import { snapshotVolcanoes, restoreVolcanoes } from './disasters.js';
 
@@ -168,6 +169,7 @@ export function restoreSnapshot(snap) {
   infra.inns = structs.filter(s => s && s.kind === 'inn' && !s.dead);
   infra.blocked.clear();
   resetBuildings();
+  resetTech();
   restoreVolcanoes(snap.volcanoes || []);
 }
 

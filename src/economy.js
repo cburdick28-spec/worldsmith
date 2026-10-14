@@ -305,12 +305,12 @@ function updateCrises(dt) {
 
 export const ERAS = [
   { name: 'Age of Dawn', from: 0, war: 0.8, sun: '#fff4e0', si: 2.3, hemi: '#d8ecff', hi: 1.15 },
-  { name: 'Age of Bronze', from: 45, war: 1.0, sun: '#ffe7b8', si: 2.3, hemi: '#e8e0c8', hi: 1.1 },
-  { name: 'Age of Iron', from: 110, war: 1.25, sun: '#dfe8f4', si: 2.15, hemi: '#c8d4e4', hi: 1.05 },
-  { name: 'Age of Embers', from: 190, war: 1.6, sun: '#ff9a5e', si: 1.9, hemi: '#e6b496', hi: 0.95 },
-  { name: 'Golden Age', from: 270, war: 0.65, sun: '#ffe08a', si: 2.5, hemi: '#fff0c8', hi: 1.25 },
+  { name: 'Age of Bronze', from: 20, war: 1.0, sun: '#ffe7b8', si: 2.3, hemi: '#e8e0c8', hi: 1.1 },
+  { name: 'Age of Iron', from: 50, war: 1.25, sun: '#dfe8f4', si: 2.15, hemi: '#c8d4e4', hi: 1.05 },
+  { name: 'Age of Embers', from: 85, war: 1.6, sun: '#ff9a5e', si: 1.9, hemi: '#e6b496', hi: 0.95 },
+  { name: 'Golden Age', from: 125, war: 0.65, sun: '#ffe08a', si: 2.5, hemi: '#fff0c8', hi: 1.25 },
 ];
-const CYCLE_FROM = 45, CYCLE_LEN = 330;
+const CYCLE_FROM = 20, CYCLE_LEN = 190;
 
 export function eraAt(year) {
   let y = year;

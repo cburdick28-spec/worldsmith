@@ -1,5 +1,6 @@
 // DOM overlay: nations panel, chronicle, toolbar, tooltips and the possession HUD.
 import { nations, game, capacity, nm, giftWood, blessPeople, rulerTitle } from './nations.js';
+import { TIERS, tierOf } from './tech.js';
 import { units } from './units.js';
 import { infra } from './infra.js';
 import { roadStats } from './roads.js';
@@ -84,6 +85,7 @@ export function updateUI() {
     return `<div class="nation" style="--c:${n.css}">
       <div class="nt">${n.name}</div>
       <div class="ns">${n.R.label} · founded Y${n.founded}${n.liege ? ` · 🏘️ vassal of ${n.liege.place}` : ''}${nations.some(m => m.alive && m.liege === n) ? ` · ${nations.filter(m => m.alive && m.liege === n).length} vassals` : ''}</div>
+      <div class="rel" title="Technology tier: unlocks buildings and speeds growth">${TIERS[tierOf(n)].icon} ${TIERS[tierOf(n)].name} tier · 🔬 ${Math.floor(n.tech || 0)}${tierOf(n) < TIERS.length - 1 ? ` / ${TIERS[tierOf(n) + 1].at}` : ''}</div>
       <div class="king">👑 ${k ? `${rulerTitle(n)} ${k.name}, age ${k.age}` : '<i>no ruler</i>'}</div>
       <div class="stats"><span title="Population / housing">👥 ${n.units.size}/${capacity(n)}</span><span title="Soldiers">🗡 ${soldiers}</span><span title="Houses">🏠 ${n.houses.length}</span><span title="Wood (price ${price(n, 'wood').toFixed(1)})">🪵 ${Math.floor(n.wood)}</span><span title="Food (price ${price(n, 'food').toFixed(1)})" class="${n.starving ? 'war' : ''}">🌾 ${Math.floor(n.food)}</span><span title="Stone (price ${price(n, 'stone').toFixed(1)})">🪨 ${Math.floor(n.stone)}</span><span title="Treasury">🪙 ${Math.floor(n.gold)}</span><span title="Farms">🚜 ${n.farms.length}</span><span title="Trade caravans completed">🐪 ${n.trips}</span></div>
       <div class="rel">${relText(n)}</div>
