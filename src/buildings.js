@@ -198,8 +198,26 @@ export const TYPES = {
       return p;
     },
   },
+  airport: {
+    name: 'airport', tier: 5, rough: 5, reach: 0.5, icon: '✈️', size: 11, wood: 30, stone: 40, gold: 40, minHouses: 10,
+    max: () => 1,
+    plan(n, x0, z0, g) {
+      const p = [];
+      slab(p, x0, z0, 11, g, B.STONE);
+      for (let i = 0; i < 11; i++) for (let j = 0; j < 5; j++) p.push([x0 + i, g, z0 + j, B.BASALT]); // runway
+      for (let i = 1; i < 11; i += 2) p.push([x0 + i, g, z0 + 2, B.MARBLE]); // centre line
+      for (let i = 1; i < 10; i++) for (let j = 6; j < 10; j++) { // terminal
+        const edge = i === 1 || i === 9 || j === 6 || j === 9;
+        for (let y = g + 1; y <= g + 3; y++) if (edge && !(i === 5 && j === 6 && y < g + 3)) p.push([x0 + i, y, z0 + j, j === 6 && y === g + 2 && i % 2 === 0 ? B.GLASS : B.MARBLE]);
+        p.push([x0 + i, g + 4, z0 + j, n.R.roof]);
+      }
+      for (let y = g + 1; y <= g + 8; y++) p.push([x0 + 10, y, z0 + 10, B.STONE]); // control tower
+      for (const [i, j] of [[9, 9], [10, 9], [9, 10], [10, 10]]) { p.push([x0 + i, g + 9, z0 + j, B.GLASS], [x0 + i, g + 10, z0 + j, n.R.roof]); }
+      return p;
+    },
+  },
 };
-const ORDER = ['worldtree', 'ziggurat', 'spire', 'well', 'fishing', 'market', 'windmill', 'tower', 'forge', 'barracks', 'temple'];
+const ORDER = ['airport', 'worldtree', 'ziggurat', 'spire', 'well', 'fishing', 'market', 'windmill', 'tower', 'forge', 'barracks', 'temple'];
 
 // ---------- bookkeeping ----------
 
@@ -226,11 +244,11 @@ function findPlot(n, T) {
   const s = T.size;
   const homes = n.houses.filter(h => !h.dead);
   if (!homes.length) return null;
-  const rough = T.wonder ? 4 : 2;
+  const rough = T.rough || (T.wonder ? 4 : 2);
   for (let tries = 0; tries < (T.wonder ? 260 : 90); tries++) {
     const allowTrees = tries >= 40;
     const base = pick(homes);
-    const a = Math.random() * Math.PI * 2, d = rand(7, 14 + tries * (T.coastal ? 0.45 : 0.15));
+    const a = Math.random() * Math.PI * 2, d = rand(7, 14 + tries * (T.reach || (T.coastal ? 0.45 : 0.15)));
     const x0 = Math.round(base.cx + Math.cos(a) * d - s / 2), z0 = Math.round(base.cz + Math.sin(a) * d - s / 2);
     const zf = T.front || 0;
     if (x0 < 5 || z0 < 5 + zf || x0 + s > W - 5 || z0 + s > D - 5) continue;
@@ -330,6 +348,7 @@ function yearly() {
         case 'worldtree': cap += 10; n.food += 6; n.unrest = Math.max(0, (n.unrest || 0) - 1); for (const u of n.units) if (u.alive && Math.hypot(u.x - s.cx, u.z - s.cz) < 30) u.hp = Math.min(u.maxHp, u.hp + 4); break;
         case 'ziggurat': cap += 8; n.gold += 3; n.stone += 3; smokeColumn(s.x0 + 6.5, s.g + 10, s.z0 + 6.5, 4); break;
         case 'spire': cap += 10; n.gold += 5; n.unrest = Math.max(0, (n.unrest || 0) - 1); break;
+        case 'airport': cap += 6; n.gold += 4; break;
         case 'market': n.gold += 1 + Math.floor(h / 4); break;
         case 'windmill': n.food += 2 * Math.min(n.farms.length, 4); break;
         case 'fishing': n.food += 3; break;
@@ -398,7 +417,7 @@ export function resetBuildings() { civicsDirty = true; lastYear = -1; }
 const EFFECT = {
   well: 'houses 2 more people', fishing: 'brings in fish (+3 food a year)', market: 'brings in coin every year',
   windmill: 'grinds the harvest (+food from farms)', tower: 'archers pick off enemies and bandits', forge: 'smiths stone tools (+stone)',
-  barracks: 'drills villagers into soldiers',
+  barracks: 'drills villagers into soldiers', airport: 'planes fly trade routes and settle far-off regions (+6 housing, +4 coin a year)',
   worldtree: 'a wonder: heals and feeds the realm, +10 housing', ziggurat: 'a wonder: tribute of coin and stone, +8 housing', spire: 'a wonder: coin and calm, +10 housing', temple: 'heals the faithful, soothes unrest, collects offerings',
 };
 export function civicHTML(s) {

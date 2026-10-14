@@ -546,7 +546,7 @@ export function updateNations(dt) {
 
 const START_NATIONS = 5, EARTH_START = 9;
 // A flat, dry spot as close as possible to the middle of a region, or null.
-function siteInRegion(r) {
+export function siteInRegion(r) {
   let best = null, bd = 1e9;
   for (let tries = 0; tries < 900; tries++) {
     const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * Math.min(34, Math.sqrt(r.area) * 0.7);
