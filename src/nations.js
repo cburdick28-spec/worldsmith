@@ -8,6 +8,8 @@ import { updateBuildings } from './buildings.js';
 import { updateHeroes, heroFell } from './heroes.js';
 import { updateGlory } from './glory.js';
 import { updateTech, growthMult, tierOf } from './tech.js';
+import { updateRegions } from './regions.js';
+import { earth, BIOME } from './earth.js';
 import { rand, pick } from './noise.js';
 import { updateInfra, noteBlocked } from './infra.js';
 import { sfx } from './audio.js';
@@ -132,7 +134,7 @@ export function clearTrees(x0, z0, x1, z1, n) {
   }
 }
 
-function findSite(n, rough = 2) {
+function findSite(n, rough = 3) {
   for (let tries = 0; tries < 70; tries++) {
     const allowTrees = tries >= 35;
     const bases = n.houses.length ? n.houses : n.sites;
@@ -176,7 +178,7 @@ export function moveUnit(u, n, px, pz) {
 // takes over one of its parent's houses.
 export function createNation(race, x, z, opts = {}) {
   const R = RACES[race];
-  const place = pickPlace(race);
+  const place = opts.place || pickPlace(race);
   const n = {
     id: nextNid++, race, R, place, name: R.realm(place), css: R.color, color: new THREE.Color(R.color),
     alive: true, wood: 24, houses: [], sites: [], capital: { x, z }, king: null, units: new Set(),
@@ -406,7 +408,7 @@ function updateNation(n, dt) {
   const pending = n.sites.length * n.R.perHouse;
   if (n.sites.length < maxSites && n.wood >= 8 && n.houses.length + n.sites.length < (P > 1 ? 90 : 45) + 10 * tierOf(n) &&
       (n.units.size >= cap + pending - 3 || n.houses.length < 2)) {
-    const spot = findSite(n, P > 1 ? 4 : 2);
+    const spot = findSite(n, P > 1 ? 4 : 3);
     if (spot) {
       clearTrees(spot.x0 - 1, spot.z0 - 1, spot.x0 + 7, spot.z0 + 7, n);
       n.wood -= 8;
@@ -533,6 +535,7 @@ export function updateNations(dt) {
   updatePolitics(dt);
   updateRuins(dt);
   updateBuildings(dt);
+  updateRegions();
   updateTech();
   updateHeroes();
   updateGlory();
@@ -541,8 +544,62 @@ export function updateNations(dt) {
   processDamaged();
 }
 
-const START_NATIONS = 5;
+const START_NATIONS = 5, EARTH_START = 9;
+// A flat, dry spot as close as possible to the middle of a region, or null.
+function siteInRegion(r) {
+  let best = null, bd = 1e9;
+  for (let tries = 0; tries < 900; tries++) {
+    const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * Math.min(34, Math.sqrt(r.area) * 0.7);
+    const x = Math.floor(r.cx + Math.cos(a) * d), z = Math.floor(r.cz + Math.sin(a) * d);
+    if (x < 16 || z < 16 || x > W - 16 || z > D - 16 || earth.region[z * W + x] !== r.id) continue;
+    const h = groundTop(x, z);
+    if (h < SEA + 2 || h > 26) continue;
+    let mn = 99, mx = -1, ok = true;
+    for (let dz = -5; dz <= 5 && ok; dz += 2) for (let dx = -5; dx <= 5; dx += 2) {
+      const hh = groundTop(x + dx, z + dz);
+      if (hh < SEA + 1) { ok = false; break; }
+      mn = Math.min(mn, hh); mx = Math.max(mx, hh);
+      if (colOcc[(z + dz) * W + x + dx] && structs[colOcc[(z + dz) * W + x + dx]].kind !== 'tree') { ok = false; break; }
+    }
+    if (!ok || mx - mn > 4) continue;
+    if (d < bd) { bd = d; best = { x, z }; }
+  }
+  return best;
+}
+
+// On the Earth map the starting peoples awaken in well-spread regions of different continents.
+function setupEarthNations() {
+  const pool = earth.regions.filter(r => r.area >= 200 && r.biome !== BIOME.a && r.biome !== BIOME.d && r.biome !== BIOME.m);
+  const chosen = [];
+  const raceOf = r => r.biome === BIOME.b || r.biome === BIOME.r ? (Math.random() < 0.7 ? 'elf' : 'human') : r.biome === BIOME.s ? (Math.random() < 0.65 ? 'goblin' : 'human') : (Math.random() < 0.2 ? 'goblin' : 'human');
+  let made = 0;
+  const bad = new Set();
+  while (made < EARTH_START && bad.size + chosen.length < pool.length) {
+    let best = null, bs = -Infinity;
+    for (const r of pool) {
+      if (bad.has(r) || chosen.includes(r)) continue;
+      const d = chosen.length ? Math.min(...chosen.map(o => Math.hypot(o.cx - r.cx, o.cz - r.cz))) : 90;
+      const sc = Math.min(d, 90) + Math.random() * 8;
+      if (sc > bs) { bs = sc; best = r; }
+    }
+    if (!best) break;
+    const site = siteInRegion(best);
+    if (!site) { bad.add(best); continue; }
+    chosen.push(best);
+    const n = createNation(raceOf(best), site.x, site.z, { place: best.name });
+    if (nations.some(m => m !== n && m.race === n.race && m.css === n.css)) { // a second people of the same race gets its own banner colour
+      const hsl = {}; n.color.getHSL(hsl);
+      n.color.setHSL((hsl.h + 0.09 * (1 + made % 3)) % 1, Math.min(1, hsl.s * 0.9), Math.min(0.7, hsl.l + 0.06));
+      n.css = '#' + n.color.getHexString();
+      n.armor = n.color.clone().lerp(new THREE.Color('#6d727b'), 0.45);
+    }
+    made++;
+  }
+  log(`🌍 The world is young. ${made} peoples awaken across the continents: ${nations.map(nm).join(', ')}.`);
+}
+
 export function setupNations() {
+  if (earth.active) return setupEarthNations();
   const cands = [];
   for (let i = 0; i < 5000; i++) {
     const x = Math.floor(rand(16, W - 16)), z = Math.floor(rand(16, D - 16));

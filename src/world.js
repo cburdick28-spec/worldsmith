@@ -1,8 +1,9 @@
 // Voxel world: storage, terrain generation, structures, chunk meshing, raycasting.
 import * as THREE from '../vendor/three.module.js';
 import { makeNoise, rng, hash3 } from './noise.js';
+import { earth, buildEarth, BIOME } from './earth.js';
 
-export const W = 256, D = 256, H = 48, SEA = 12, CS = 16;
+export const W = 720, D = 288, H = 48, SEA = 12, CS = 16; // a 2:1 world map
 export const CX = W / CS, CZ = D / CS;
 export const WATER_Y = SEA + 0.85;
 
@@ -321,22 +322,32 @@ export function housePlan(race, x0, z0, g, roof, capital) {
 
 // ---------- terrain generation ----------
 
-export function generate(seed) {
+export function generate(seed, mode = 'earth') {
   const R = rng(seed);
   const n1 = makeNoise(seed), n2 = makeNoise(seed + 77), n3 = makeNoise(seed + 991);
   const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const E = mode === 'earth' ? buildEarth(W, D, SEA, H, seed) : null;
+  if (!E) earth.active = false;
   for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-    const e = n1.fbm(x / 60, z / 60, 5) * 1.8;
-    const r = 1 - Math.abs(n2.fbm(x / 38 + 31, z / 38 - 17, 4) * 2);
-    const mount = Math.pow(Math.max(0, r), 3) * smooth(0.0, 0.5, e) * 18;
-    const d = Math.hypot(x / W - 0.5, z / D - 0.5) * 2;
-    let h = 14.5 + e * 10 + mount - Math.pow(Math.max(0, d - 0.35), 2) * 45;
-    h = Math.max(2, Math.min(H - 10, Math.round(h)));
+    let h;
+    if (E) h = E.h[z * W + x];
+    else {
+      const e = n1.fbm(x / 60, z / 60, 5) * 1.8;
+      const r = 1 - Math.abs(n2.fbm(x / 38 + 31, z / 38 - 17, 4) * 2);
+      const mount = Math.pow(Math.max(0, r), 3) * smooth(0.0, 0.5, e) * 18;
+      const d = Math.hypot(x / W - 0.5, z / D - 0.5) * 2;
+      h = 14.5 + e * 10 + mount - Math.pow(Math.max(0, d - 0.35), 2) * 45;
+      h = Math.max(2, Math.min(H - 10, Math.round(h)));
+    }
+    const bi = E ? E.biome[z * W + x] : 0;
     for (let y = 0; y <= h; y++) {
       let t = B.STONE;
       if (h <= SEA + 1) t = y >= h - 2 ? B.SAND : B.STONE;
       else if (h > 31) t = y === h ? B.SNOW : B.STONE;
       else if (h > 25) t = B.STONE;
+      else if (bi === BIOME.d) t = y > h - 4 ? B.SAND : B.STONE;
+      else if (bi === BIOME.a) t = y === h ? B.SNOW : y > h - 3 ? B.DIRT : B.STONE;
+      else if (bi === BIOME.m && h > 22) t = y === h && h > 27 ? B.SNOW : B.STONE;
       else if (y === h) t = B.GRASS;
       else if (y > h - 4) t = B.DIRT;
       vox[idx(x, y, z)] = t;
@@ -346,10 +357,12 @@ export function generate(seed) {
   // forests
   for (let z = 3; z < D - 3; z++) for (let x = 3; x < W - 3; x++) {
     const h = height[z * W + x];
-    if (vox[idx(x, h, z)] !== B.GRASS && !(h > 25 && h < 31)) continue;
+    const bi = earth.active ? earth.biome[z * W + x] : 0, top = vox[idx(x, h, z)];
+    if (top !== B.GRASS && !(h > 25 && h < 31) && !(bi === BIOME.a && top === B.SNOW && h <= 31)) continue;
     if (colOcc[z * W + x]) continue;
     const forest = n3.fbm(x / 28, z / 28, 3) * 2;
-    const p = 0.012 + Math.max(0, forest) * 0.17;
+    const dens = [1, 0.04, 0.22, 1.7, 1.5, 0.22, 0.25][bi];
+    const p = (0.012 + Math.max(0, forest) * 0.17) * dens;
     if (R() > p) continue;
     let slope = 0;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) slope = Math.max(slope, Math.abs(height[(z + dz) * W + x + dx] - h));
@@ -357,7 +370,8 @@ export function generate(seed) {
     let near = false;
     for (let dz = -2; dz <= 2 && !near; dz++) for (let dx = -2; dx <= 2; dx++) if (colOcc[(z + dz) * W + x + dx]) { near = true; break; }
     if (near) continue;
-    plantTree(x, z, R, h > 21 || forest > 0.45 ? 'pine' : 'oak');
+    const pine = bi === BIOME.b || bi === BIOME.a ? R() < 0.85 : bi === BIOME.r ? false : h > 21 || forest > 0.45;
+    plantTree(x, z, R, pine ? 'pine' : 'oak');
   }
   worldInfo.baseStructs = structs.length - 1;
   worldInfo.seed = seed;

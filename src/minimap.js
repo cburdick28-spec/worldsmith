@@ -6,9 +6,10 @@ import { units } from './units.js';
 import { infra } from './infra.js';
 import { dragons } from './dragons.js';
 import { civics } from './buildings.js';
+import { earth } from './earth.js';
 
 const REACH = 15; // how far a house claims land around it
-let canvas, ctx, img, godCam, T = 0, show = true;
+let canvas, ctx, img, godCam, T = 0, show = true, big = false, labels = [];
 const ownerGrid = new Int16Array(W * D);
 const distGrid = new Float32Array(W * D);
 
@@ -16,6 +17,7 @@ export function initMinimap(cam) {
   godCam = cam;
   canvas = document.getElementById('mm');
   ctx = canvas.getContext('2d');
+  canvas.width = W; canvas.height = D;
   img = ctx.createImageData(W, D);
   const jump = e => {
     const r = canvas.getBoundingClientRect();
@@ -25,10 +27,27 @@ export function initMinimap(cam) {
   canvas.addEventListener('pointerdown', e => { down = true; canvas.setPointerCapture(e.pointerId); jump(e); });
   canvas.addEventListener('pointermove', e => { if (down) jump(e); });
   canvas.addEventListener('pointerup', () => { down = false; });
+  const box = document.getElementById('minimap');
+  if (earth.active) { // a name for every region, crisp HTML over the pixels
+    const wrap = canvas.parentElement;
+    for (const r of earth.regions) {
+      if (r.area < 90) continue;
+      const d = document.createElement('div');
+      d.className = 'rl' + (r.area >= 900 ? ' big' : '');
+      d.textContent = r.name;
+      d.style.left = `${r.cx / W * 100}%`; d.style.top = `${r.cz / D * 100}%`;
+      wrap.appendChild(d);
+      labels.push({ d, r });
+    }
+  }
   window.addEventListener('keydown', e => {
-    if (e.code === 'KeyM' && e.target.tagName !== 'INPUT') {
-      show = !show;
-      document.getElementById('minimap').style.display = show ? '' : 'none';
+    if (e.code === 'KeyM' && e.target.tagName !== 'INPUT') { // small -> large world map -> hidden
+      if (!show) { show = true; big = false; }
+      else if (!big) big = true;
+      else { show = false; big = false; }
+      box.style.display = show ? '' : 'none';
+      box.classList.toggle('big', big);
+      T = 0;
     }
   });
   T = 0;
@@ -76,6 +95,15 @@ function draw() {
       const sh = 0.7 + Math.min(1, y / 34) * 0.45;
       r = (c0 ? c0.r : 0.5) * 255 * sh; g = (c0 ? c0.g : 0.5) * 255 * sh; b = (c0 ? c0.b : 0.5) * 255 * sh;
     }
+    if (earth.active) {
+      const rg = earth.region[c];
+      if (rg) {
+        const ro = earth.regions[rg - 1].owner, rc = ro ? col.get(ro) : null;
+        if (rc) { r += (rc[0] - r) * 0.16; g += (rc[1] - g) * 0.16; b += (rc[2] - b) * 0.16; }
+        if ((x < W - 1 && earth.region[c + 1] && earth.region[c + 1] !== rg) || (z < D - 1 && earth.region[c + W] && earth.region[c + W] !== rg) ||
+            (x > 0 && earth.region[c - 1] && earth.region[c - 1] !== rg) || (z > 0 && earth.region[c - W] && earth.region[c - W] !== rg)) { r *= 0.45; g *= 0.45; b *= 0.45; }
+      }
+    }
     const o = ownerGrid[c];
     if (o) {
       const nc = col.get(o);
@@ -88,6 +116,7 @@ function draw() {
     d[p] = r; d[p + 1] = g; d[p + 2] = b; d[p + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
+  for (const L of labels) L.d.style.color = L.r.owner && col.get(L.r.owner) ? `rgb(${col.get(L.r.owner).map(v => Math.min(255, v * 0.4 + 150) | 0).join(',')})` : '#fff';
   // capitals, inns, bridges
   for (const n of nations) {
     if (!n.alive) continue;
