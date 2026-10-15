@@ -460,6 +460,67 @@ function buildChunk(c) {
   mesh.geometry = geo;
 }
 
+
+// ---------- far-away chunks: a coarse mesh (one cell per 2x2 columns, top and drop-off walls only) ----------
+
+const LOD_CS = CS / 2, GW = W / 2, GD = D / 2;
+const lodMeshes = [], mode = new Uint8Array(CX * CZ), fullOK = new Uint8Array(CX * CZ), lodOK = new Uint8Array(CX * CZ);
+const pending = new Set();
+const cellH = (gx, gz) => {
+  if (gx < 0 || gz < 0 || gx >= GW || gz >= GD) return -99;
+  const i = gz * 2 * W + gx * 2;
+  return Math.max(height[i], height[i + 1], height[i + W], height[i + W + 1]);
+};
+const cellCol = (gx, gz, h) => {
+  const x = gx * 2, z = gz * 2;
+  let bx = x, bz = z, bh = height[z * W + x];
+  for (const [dx, dz] of [[1, 0], [0, 1], [1, 1]]) { const hh = height[(z + dz) * W + x + dx]; if (hh > bh) { bh = hh; bx = x + dx; bz = z + dz; } }
+  const t = vox[idx(bx, Math.max(0, bh), bz)];
+  return BLOCK[t] || BLOCK[B.GRASS];
+};
+
+function buildLod(c) {
+  const gx0 = (c % CX) * LOD_CS, gz0 = ((c / CX) | 0) * LOD_CS;
+  const pos = [], nor = [], col = [], tex = [], ind = [];
+  let vc = 0;
+  const quad = (p0, p1, p2, p3, n, c3, flip) => {
+    for (const p of [p0, p1, p2, p3]) { pos.push(p[0], p[1], p[2]); nor.push(n[0], n[1], n[2]); col.push(c3[0], c3[1], c3[2]); tex.push(0); }
+    if (flip) ind.push(vc, vc + 2, vc + 1, vc, vc + 3, vc + 2); else ind.push(vc, vc + 1, vc + 2, vc, vc + 2, vc + 3);
+    vc += 4;
+  };
+  for (let gz = gz0; gz < gz0 + LOD_CS; gz++) for (let gx = gx0; gx < gx0 + LOD_CS; gx++) {
+    const h = cellH(gx, gz);
+    if (h < 0) continue;
+    const def = cellCol(gx, gz, h), x0 = gx * 2, x1 = x0 + 2, z0 = gz * 2, z1 = z0 + 2, yt = h + 1;
+    const j = 0.94 + hash3(gx, h, gz) * 0.12;
+    const tc = [def.top.r * j, def.top.g * j, def.top.b * j], sc = [def.side.r * j * 0.8, def.side.g * j * 0.8, def.side.b * j * 0.8];
+    quad([x0, yt, z0], [x0, yt, z1], [x1, yt, z1], [x1, yt, z0], [0, 1, 0], tc, false);
+    let nh = cellH(gx + 1, gz); if (nh >= 0 && nh < h) quad([x1, nh + 1, z0], [x1, yt, z0], [x1, yt, z1], [x1, nh + 1, z1], [1, 0, 0], sc, false);
+    nh = cellH(gx - 1, gz); if (nh >= 0 && nh < h) quad([x0, nh + 1, z0], [x0, yt, z0], [x0, yt, z1], [x0, nh + 1, z1], [-1, 0, 0], sc, true);
+    nh = cellH(gx, gz + 1); if (nh >= 0 && nh < h) quad([x0, nh + 1, z1], [x1, nh + 1, z1], [x1, yt, z1], [x0, yt, z1], [0, 0, 1], sc, false);
+    nh = cellH(gx, gz - 1); if (nh >= 0 && nh < h) quad([x0, nh + 1, z0], [x1, nh + 1, z0], [x1, yt, z0], [x0, yt, z0], [0, 0, -1], sc, true);
+  }
+  const mesh = lodMeshes[c], geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setAttribute('aTex', new THREE.Float32BufferAttribute(tex, 1));
+  geo.setIndex(vc > 65000 ? new THREE.Uint32BufferAttribute(ind, 1) : new THREE.Uint16BufferAttribute(ind, 1));
+  geo.computeBoundingSphere();
+  mesh.geometry.dispose();
+  mesh.geometry = geo;
+}
+
+// Chunks near the focus get the full-detail mesh, the rest the coarse one. Call a few times a second.
+export function updateLOD(fx, fz, dist) {
+  const R = Math.min(110, Math.max(55, dist * 0.8));
+  for (let c = 0; c < CX * CZ; c++) {
+    const d = Math.hypot((c % CX) * CS + CS / 2 - fx, ((c / CX) | 0) * CS + CS / 2 - fz);
+    const want = d < R ? 1 : d > R + 18 ? 0 : mode[c];
+    if (want !== mode[c]) { mode[c] = want; pending.add(c); }
+  }
+}
+
 export function initChunks(scene) {
   chunkMat = new THREE.MeshLambertMaterial({ vertexColors: true });
   // seasons: tint leaves/grass in autumn and frost up-facing surfaces in winter
@@ -502,17 +563,30 @@ export function initChunks(scene) {
     const mesh = new THREE.Mesh(new THREE.BufferGeometry(), chunkMat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.visible = false;
     scene.add(mesh);
     chunkMeshes.push(mesh);
+    const lm = new THREE.Mesh(new THREE.BufferGeometry(), chunkMat);
+    lm.receiveShadow = true;
+    lm.visible = false;
+    scene.add(lm);
+    lodMeshes.push(lm);
   }
 }
 
 export function rebuildDirty(maxN = 10) {
+  for (const c of dirty) { fullOK[c] = 0; lodOK[c] = 0; pending.add(c); }
+  dirty.clear();
   let n = 0;
-  for (const c of dirty) {
-    dirty.delete(c);
-    buildChunk(c);
-    if (++n >= maxN) break;
+  for (const c of pending) {
+    if (mode[c] === 1 && !fullOK[c]) { buildChunk(c); fullOK[c] = 1; n++; }
+    else if (mode[c] === 0 && !lodOK[c]) { buildLod(c); lodOK[c] = 1; n++; }
+    // show whichever mesh is current; keep the old one on screen until its replacement exists
+    const f = fullOK[c] === 1, l = lodOK[c] === 1;
+    const showFull = mode[c] === 1 ? f : (!l && f);
+    chunkMeshes[c].visible = showFull; lodMeshes[c].visible = !showFull && l;
+    if ((mode[c] === 1 ? fullOK[c] : lodOK[c]) === 1) pending.delete(c);
+    if (n >= maxN) break;
   }
 }
 

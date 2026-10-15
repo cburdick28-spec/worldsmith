@@ -1,6 +1,6 @@
 import { makeWaterMaterial, updateWater } from './water.js';
 import * as THREE from '../vendor/three.module.js';
-import { W, D, SEA, WATER_Y, generate, initChunks, rebuildDirty } from './world.js';
+import { W, D, SEA, WATER_Y, generate, initChunks, rebuildDirty, updateLOD } from './world.js';
 import { initEffects, updateEffects, updateVisuals, fx, fireCount } from './effects.js';
 import { initUnitMeshes, updateUnits, renderUnits } from './units.js';
 import { setupNations, updateNations, nations } from './nations.js';
@@ -36,7 +36,9 @@ const seed = snap ? snap.seed : (+params.get('seed') || Math.floor(Math.random()
 if (snap) history.replaceState(null, '', `?seed=${seed}`);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const MAX_PR = Math.min(devicePixelRatio, 1.5);
+let pr = MAX_PR, prT = 0, prAcc = 0, prN = 0, prGood = 0;
+renderer.setPixelRatio(pr);
 renderer.setSize(innerWidth, innerHeight);
 renderer.setClearColor(0x000000, 0);
 renderer.shadowMap.enabled = true;
@@ -92,6 +94,7 @@ if (snap && snap.cam) {
 }
 if (params.get('pause')) setSpeed(0);
 if (snap) document.getElementById('intro').classList.add('gone');
+updateLOD(godCam.target.x, godCam.target.z, godCam.dist);
 rebuildDirty(1000);
 document.getElementById('seed').textContent = `seed ${seed}`;
 
@@ -138,7 +141,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-window.__ws = { godCam, camera, scene }; // handy for debugging and tests
+window.__ws = { godCam, camera, scene, renderer }; // handy for debugging and tests
 const SUNSET = new THREE.Color('#ff9150'), MOON = new THREE.Color('#8aa4de'), NIGHT_HEMI = new THREE.Color('#23305c');
 const WATER_DAY = new THREE.Color(0x2f74c4), WATER_NIGHT = new THREE.Color(0x10264d);
 const skyTop = new THREE.Color(), skyMid = new THREE.Color();
@@ -146,7 +149,16 @@ const clock = new THREE.Clock();
 let uiT = 0, time = 0;
 function frame() {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, clock.getDelta());
+  const rawDt = clock.getDelta(), dt = Math.min(0.05, rawDt);
+  { // adaptive resolution: trade sharpness for smoothness when the machine is struggling
+    prAcc += rawDt; prN++; prT += rawDt;
+    if (prT >= 1.2) {
+      const avg = prAcc / prN; prAcc = 0; prN = 0; prT = 0;
+      if (avg > 0.028 && pr > 0.55) { pr = Math.max(0.55, pr - 0.15); prGood = 0; renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight); }
+      else if (avg < 0.017 && pr < MAX_PR && ++prGood >= 3) { pr = Math.min(MAX_PR, pr + 0.1); prGood = 0; renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight); }
+      else if (avg >= 0.017) prGood = 0;
+    }
+  }
   const simDt = dt * input.speed;
   time += dt;
   if (simDt > 0) {
@@ -190,7 +202,7 @@ function frame() {
   water.material.opacity = 0.76 + Math.sin(time * 0.8) * 0.03;
   uiT -= dt;
   if (uiT <= 0) {
-    uiT = 0.4; updateUI(); updateRegionHUD(godCam.target.x, godCam.target.z);
+    uiT = 0.4; updateUI(); { const f = isPossessing() || isRiding() ? camera.position : godCam.target; updateLOD(f.x, f.z, isPossessing() || isRiding() ? 80 : godCam.dist); } updateRegionHUD(godCam.target.x, godCam.target.z);
     skyTop.copy(sky.fogColor).multiplyScalar(0.72).lerp(MOON, sky.night * 0.05);
     skyMid.copy(sky.fogColor).multiplyScalar(0.9);
     document.body.style.background = `linear-gradient(#${skyTop.getHexString()} 0%, #${skyMid.getHexString()} 45%, #${sky.fogColor.getHexString()} 70%)`;
