@@ -12,6 +12,7 @@ import { initUI, updateUI, setProsperityUI, toast } from './ui.js';
 import { initMinimap, updateMinimap } from './minimap.js';
 import { initBorders, updateRegionHUD } from './regions.js';
 import { initFlights, updateFlights } from './flights.js';
+import { initFleets, updateFleets } from './fleets.js';
 import { loadEarth } from './earth.js';
 import { initSky, updateSky, sky, skyLabel } from './sky.js';
 import { initMonsters, updateMonsters } from './monsters.js';
@@ -97,6 +98,7 @@ document.getElementById('seed').textContent = `seed ${seed}`;
 initMinimap(godCam);
 initBorders(scene);
 initFlights(scene);
+initFleets(scene);
 setListener(() => (isPossessing() || isRiding() ? camera.position : godCam.target));
 const camState = () => ({ x: godCam.target.x, z: godCam.target.z, dist: godCam.goal.dist, yaw: godCam.goal.yaw, pitch: godCam.goal.pitch });
 const $ = id => document.getElementById(id);
@@ -158,6 +160,7 @@ function frame() {
       updateDragons(h, time);
       updateTornadoes(h);
       updateFlights(h);
+      updateFleets(h);
     }
   }
   updateFauna(simDt, dt, time);

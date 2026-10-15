@@ -1,5 +1,6 @@
 // People: humans, goblins and elves. AI, movement, combat and rendering.
 import * as THREE from '../vendor/three.module.js';
+import { compAt } from './landmass.js';
 import { W, D, H, SEA, WATER_Y, groundTop, solid, set, get, owner, idx, inB, structs, B, BLOCK, isWaterCol, height } from './world.js';
 import { onUnitDeath, chopTree, placeNext, nations, game, arriveCaravan, abortCaravan, caravanLost, raiderDown } from './nations.js';
 import { trample, onRoadXZ, onRoadCol, ROAD_COST, ROAD_SPEED } from './roads.js';
@@ -339,8 +340,10 @@ function nearestRaider(u, r) {
 
 function nearestEnemyHouse(u, enemies) {
   let best = null, bd = Infinity;
+  const mine = compAt(u.x, u.z); // soldiers don't swim to houses on another landmass; fleets carry them
   for (const n of enemies) for (const h of n.houses) {
     if (h.dead) continue;
+    if (mine > 0 && compAt(h.cx, h.cz) !== mine) continue;
     const d = (h.cx - u.x) ** 2 + (h.cz - u.z) ** 2;
     if (d < bd) { bd = d; best = h; }
   }
@@ -767,14 +770,14 @@ export function renderUnits(time) {
     if (nu >= MAXU) break;
     const st = u.st, n = u.nation, mil = isMil(u);
     let y = u.y;
-    if (u.swim > 0 && !u.flying && !u.held) y = SEA + 0.28 + Math.sin(time * 3 + u.id) * 0.07;
+    if (u.swim > 0 && !u.flying && !u.held && !u.boarded) y = SEA + 0.28 + Math.sin(time * 3 + u.id) * 0.07;
     const walking = u.moving && !u.held && !u.flying;
     if (walking) y += Math.abs(Math.sin(u.walk)) * 0.045;
     r.root.position.set(u.x, y, u.z);
     r.root.rotation.set(u.spin, Math.PI / 2 - u.face, 0);
     r.root.scale.setScalar(st.scale);
     let swing = u.moving ? Math.sin(u.walk) * 0.7 : 0;
-    if (u.held || u.flying) swing = Math.sin(time * 22 + u.id) * 0.9;
+    if ((u.held || u.flying) && !u.boarded) swing = Math.sin(time * 22 + u.id) * 0.9;
     r.legL.rotation.x = swing;
     r.legR.rotation.x = -swing;
     r.body.rotation.x = walking ? 0.09 : 0;
