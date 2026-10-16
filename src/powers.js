@@ -3,7 +3,7 @@ import * as THREE from '../vendor/three.module.js';
 import { W, D, H, SEA, WATER_Y, B, BLOCK, raycast, get, set, solid, topAt, owner, idx, structs, removeStruct, colOcc, isWaterCol } from './world.js';
 import { units, pickUnit, setState, standY, groundUnder, damageUnit, spawnUnit } from './units.js';
 import { nations, createNation, detachHouse, nm, giftWood } from './nations.js';
-import { extinguishArea, explode, launchMeteor, lightning, igniteArea, spawnDebris, splash, sparks, debrisRoom, leafBurst } from './effects.js';
+import { extinguishArea, explode, launchMeteor, launchNuke, lightning, igniteArea, spawnDebris, splash, sparks, debrisRoom, leafBurst } from './effects.js';
 import * as ui from './ui.js';
 import { startEarthquake, startPlague, startFlood, startVolcano, blessHarvest } from './disasters.js';
 import { spawnDragon, rideDragon, nearestDragon, isRiding } from './dragons.js';
@@ -17,6 +17,7 @@ export const TOOLS = [
   { id: 'inspect', key: '`', icon: '🔍', name: 'Inspect', hint: 'Click a person or building to learn about them.' },
   { id: 'grab', key: '1', icon: '✋', name: 'Hand of God', hint: 'Drag to rip up houses, trees, people or earth. Let go while moving to throw.' },
   { id: 'meteor', key: '2', icon: '☄️', name: 'Meteor', hint: 'Call down a burning star. Hold to keep them falling.', rate: 0.45 },
+  { id: 'nuke', key: 'X', icon: '☢️', name: 'Nuke', hint: 'Drop the bomb. A crater, a firestorm and a mushroom cloud: whole cities vanish.' },
   { id: 'lightning', key: '3', icon: '⚡', name: 'Lightning', hint: 'Strike the ground with lightning. Hold for a storm.', rate: 0.22 },
   { id: 'fire', key: '4', icon: '🔥', name: 'Wildfire', hint: 'Set things ablaze. Wood, leaves and thatch burn; stone and marble do not.', rate: 0.1 },
   { id: 'raise', key: '5', icon: '⛰️', name: 'Raise Land', hint: 'Hold to lift the earth.', rate: 0.07 },
@@ -36,7 +37,7 @@ export const TOOLS = [
   { id: 'dragon', key: 'B', icon: '🐉', name: 'Dragon', hint: 'Click open land to call a dragon, or click near one to ride it. W/S dive and climb, A/D turn, Shift boost, Space or click for fire, Esc to climb down.' },
   { id: 'possess', key: '0', icon: '👁️', name: 'Possess', hint: 'Click a person to walk in their body. WASD move, mouse look, Space jump, click strike, right-click build, Esc leave.' },
 ];
-const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess', KeyG: 'gift', KeyT: 'quake', KeyY: 'plague', KeyU: 'flood', KeyI: 'volcano', KeyH: 'harvest', KeyB: 'dragon', KeyJ: 'tornado', KeyK: 'weather', KeyN: 'bless' };
+const KEYMAP = { Backquote: 'inspect', Digit1: 'grab', Digit2: 'meteor', Digit3: 'lightning', Digit4: 'fire', Digit5: 'raise', Digit6: 'lower', Digit7: 'human', Digit8: 'goblin', Digit9: 'elf', Digit0: 'possess', KeyG: 'gift', KeyT: 'quake', KeyY: 'plague', KeyU: 'flood', KeyI: 'volcano', KeyH: 'harvest', KeyB: 'dragon', KeyJ: 'tornado', KeyK: 'weather', KeyN: 'bless', KeyX: 'nuke' };
 
 export const input = { keys: {}, speed: 1, lastSpeed: 1, fire: false };
 let tool = TOOLS[1];
@@ -116,7 +117,7 @@ function structBox(s) {
   return x0 === Infinity ? null : [x0, y0, z0, x1, y1, z1];
 }
 
-const RING = { gift: 2, meteor: 6, lightning: 2, fire: 2.2, raise: 2.6, lower: 2.6, human: 1.6, goblin: 1.6, elf: 1.6, quake: 15, plague: 7, flood: 15, volcano: 8, harvest: 3, bless: 7, dragon: 4 };
+const RING = { gift: 2, meteor: 6, nuke: 14, lightning: 2, fire: 2.2, raise: 2.6, lower: 2.6, human: 1.6, goblin: 1.6, elf: 1.6, quake: 15, plague: 7, flood: 15, volcano: 8, harvest: 3, bless: 7, dragon: 4 };
 
 function updateIndicators() {
   ringMesh.visible = false;
@@ -170,6 +171,9 @@ function primary(start) {
       break;
     case 'meteor':
       if (h.point) launchMeteor(h.point.x + (start ? 0 : rand(-4, 4)), h.point.y, h.point.z + (start ? 0 : rand(-4, 4)));
+      break;
+    case 'nuke':
+      if (start && h.point) launchNuke(h.point.x, h.point.y, h.point.z);
       break;
     case 'lightning':
       if (h.point) lightning(h.point.x + (start ? 0 : rand(-3, 3)), h.point.y, h.point.z + (start ? 0 : rand(-3, 3)));
