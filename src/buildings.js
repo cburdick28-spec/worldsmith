@@ -3,6 +3,7 @@
 // on its nation's economy or defence. Placement is instant, like inns.
 import { W, D, SEA, B, colOcc, structs, groundTop, newStruct, placeStruct, claimFoot, flatten, removeStruct, height } from './world.js';
 import { nations, nm, clearTrees, game } from './nations.js';
+import { earth, LON0, LAT0, STEP } from './earth.js';
 import { units, damageUnit } from './units.js';
 import { leafBurst, arrow, smokeColumn, dustCloud } from './effects.js';
 import { sfx } from './audio.js';
@@ -217,6 +218,139 @@ export const TYPES = {
     },
   },
 };
+
+// ---------- real-world landmarks: raised by whoever controls the region they stand in ----------
+
+const disc = (p, cx, cz, r0, r1, y0, y1, t, skip) => { // cells whose distance from (cx, cz) lies in [r0, r1)
+  for (let y = y0; y <= y1; y++) for (let z = 0; z < 2 * Math.ceil(r1) + 1; z++) for (let x = 0; x < 2 * Math.ceil(r1) + 1; x++) {
+    const d = Math.hypot(x - Math.ceil(r1) - 0, z - Math.ceil(r1));
+    if (d >= r0 && d < r1 && !(skip && skip(x, z, y))) p.push([cx + x - Math.ceil(r1), y, cz + z - Math.ceil(r1), t]);
+  }
+};
+export const LANDMARKS = [
+  { id: 'stonehenge', name: 'Stonehenge', icon: '🗿', lon: -1.8, lat: 51.2, tier: 1, size: 11, wood: 10, stone: 30, gold: 10,
+    plan(n, x0, z0, g) {
+      const p = [];
+      for (let k = 0; k < 12; k++) {
+        const a = k / 12 * Math.PI * 2, x = x0 + 5 + Math.round(Math.cos(a) * 4.3), z = z0 + 5 + Math.round(Math.sin(a) * 4.3);
+        for (let y = g; y < g + 4; y++) p.push([x, y, z, B.STONE]);
+      }
+      for (let k = 0; k < 12; k += 2) { const a = (k + 1) / 12 * Math.PI * 2; p.push([x0 + 5 + Math.round(Math.cos(a) * 4.3), g + 4, z0 + 5 + Math.round(Math.sin(a) * 4.3), B.COBBLE]); }
+      for (let y = g; y < g + 3; y++) p.push([x0 + 4, y, z0 + 5, B.STONE], [x0 + 6, y, z0 + 5, B.STONE]);
+      p.push([x0 + 4, g + 3, z0 + 5, B.COBBLE], [x0 + 5, g + 3, z0 + 5, B.COBBLE], [x0 + 6, g + 3, z0 + 5, B.COBBLE]);
+      return p;
+    } },
+  { id: 'pyramid', name: 'Great Pyramid', icon: '🔺', lon: 31.13, lat: 29.98, tier: 2, size: 15, wood: 20, stone: 60, gold: 20,
+    plan(n, x0, z0, g) {
+      const p = [];
+      for (let y = 0; y < 8; y++) slab(p, x0, z0, 15, g + y, B.SAND, y);
+      p.push([x0 + 7, g + 8, z0 + 7, B.GOLD]);
+      return p;
+    } },
+  { id: 'colosseum', name: 'Colosseum', icon: '🏟️', lon: 12.49, lat: 41.89, tier: 3, size: 15, wood: 20, stone: 60, gold: 30,
+    plan(n, x0, z0, g) {
+      const p = [];
+      disc(p, x0 + 7, z0 + 7, 0, 5, g, g, B.SAND);
+      disc(p, x0 + 7, z0 + 7, 5, 6.6, g, g + 2, B.COBBLE);
+      disc(p, x0 + 7, z0 + 7, 6.6, 7.6, g, g + 5, B.MARBLE, (x, z, y) => y < g + 2 && (x + z) % 2 === 0);
+      disc(p, x0 + 7, z0 + 7, 6.6, 7.6, g + 6, g + 6, B.PLANK, (x, z) => (x + z) % 2 === 0);
+      return p;
+    } },
+  { id: 'greatwall', name: 'Great Wall', icon: '🧱', lon: 116.0, lat: 40.4, tier: 3, size: 15, wood: 20, stone: 70, gold: 20,
+    plan(n, x0, z0, g) {
+      const p = [];
+      for (let i = 0; i < 15; i++) for (let j = 6; j < 9; j++) { for (let y = g; y < g + 4; y++) p.push([x0 + i, y, z0 + j, B.STONE]); if (i % 2 === 0) p.push([x0 + i, g + 4, z0 + (j === 6 || j === 8 ? j : 7), B.COBBLE]); }
+      for (const tx of [0, 6, 12]) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { for (let y = g + 4; y < g + 8; y++) if (i === 0 || i === 2 || j === 0 || j === 2) p.push([x0 + tx + i, y, z0 + 6 + j, B.STONE]); p.push([x0 + tx + i, g + 8, z0 + 6 + j, n.R.roof]); }
+      return p;
+    } },
+  { id: 'taj', name: 'Domed Mausoleum', icon: '🕌', lon: 78.04, lat: 27.17, tier: 3, size: 15, wood: 20, stone: 60, gold: 40,
+    plan(n, x0, z0, g) {
+      const p = [];
+      slab(p, x0, z0, 15, g, B.MARBLE); slab(p, x0, z0, 15, g + 1, B.MARBLE, 1);
+      for (let y = g + 2; y < g + 7; y++) ring(p, x0 + 4, z0 + 4, 7, y, B.MARBLE, (i, j) => y < g + 5 && i === 3 && j === 0);
+      slab(p, x0 + 4, z0 + 4, 7, g + 7, B.MARBLE);
+      for (let k = 0; k < 4; k++) slab(p, x0 + 4, z0 + 4, 7, g + 8 + k, B.MARBLE, 1 + k);
+      p.push([x0 + 7, g + 12, z0 + 7, B.GOLD], [x0 + 7, g + 13, z0 + 7, B.GOLD]);
+      for (const [i, j] of [[1, 1], [13, 1], [1, 13], [13, 13]]) { for (let y = g + 2; y < g + 11; y++) p.push([x0 + i, y, z0 + j, B.MARBLE]); p.push([x0 + i, g + 11, z0 + j, B.GOLD]); }
+      return p;
+    } },
+  { id: 'christ', name: 'Redeemer Statue', icon: '✝️', lon: -43.21, lat: -22.95, tier: 4, size: 9, wood: 20, stone: 60, gold: 40,
+    plan(n, x0, z0, g) {
+      const p = [];
+      slab(p, x0, z0, 9, g, B.STONE); slab(p, x0, z0, 9, g + 1, B.STONE, 1); slab(p, x0, z0, 9, g + 2, B.STONE, 2);
+      for (let y = g + 3; y < g + 6; y++) slab(p, x0, z0, 9, y, B.COBBLE, 3);
+      for (let y = g + 6; y < g + 15; y++) p.push([x0 + 4, y, z0 + 4, B.MARBLE]);
+      for (let i = 0; i < 9; i++) p.push([x0 + i, g + 13, z0 + 4, B.MARBLE]);
+      p.push([x0 + 4, g + 15, z0 + 4, B.MARBLE]);
+      return p;
+    } },
+  { id: 'eiffel', name: 'Iron Tower', icon: '🗼', lon: 2.29, lat: 48.86, tier: 5, size: 9, wood: 30, stone: 40, gold: 60,
+    plan(n, x0, z0, g) {
+      const p = [];
+      for (let y = 0; y < 14; y++) {
+        const k = Math.min(3, Math.floor(y / 3.5)), a = k, b = 8 - k;
+        for (const [i, j] of [[a, a], [b, a], [a, b], [b, b]]) p.push([x0 + i, g + y, z0 + j, B.BASALT]);
+        if (y === 5 || y === 10) slab(p, x0, z0, 9, g + y, B.BASALT, y === 5 ? 1 : 2);
+      }
+      for (let y = 14; y < 21; y++) p.push([x0 + 4, g + y, z0 + 4, B.BASALT]);
+      p.push([x0 + 4, g + 21, z0 + 4, B.GOLD]);
+      return p;
+    } },
+  { id: 'liberty', name: 'Torch Statue', icon: '🗽', lon: -74.04, lat: 40.69, tier: 5, size: 7, wood: 20, stone: 50, gold: 50,
+    plan(n, x0, z0, g) {
+      const p = [];
+      slab(p, x0, z0, 7, g, B.STONE); slab(p, x0, z0, 7, g + 1, B.STONE, 1);
+      for (let y = g + 2; y < g + 5; y++) slab(p, x0, z0, 7, y, B.COBBLE, 2);
+      for (let y = g + 5; y < g + 13; y++) p.push([x0 + 3, y, z0 + 3, B.MARBLE]);
+      for (let y = g + 11; y < g + 16; y++) p.push([x0 + 4, y, z0 + 3, B.MARBLE]);
+      p.push([x0 + 4, g + 16, z0 + 3, B.GOLD], [x0 + 3, g + 13, z0 + 3, B.MARBLE]);
+      for (const [i, j] of [[2, 3], [4, 3], [3, 2], [3, 4]]) p.push([x0 + i, g + 13, z0 + j, B.GOLD]);
+      return p;
+    } },
+];
+for (const L of LANDMARKS) TYPES['lm_' + L.id] = { name: L.name, icon: L.icon, tier: L.tier, size: L.size, wood: L.wood, stone: L.stone, gold: L.gold, minHouses: 6, wonder: true, landmark: L, max: () => 1, plan: L.plan };
+
+const cellOf = L => ({ x: Math.floor((L.lon - LON0) / STEP), z: Math.floor((LAT0 - L.lat) / STEP) });
+export function landmarkSpot(L) {
+  const c = cellOf(L), s = L.size;
+  for (let r = 0; r <= 26; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+    const x0 = c.x + dx - (s >> 1), z0 = c.z + dz - (s >> 1);
+    if (x0 < 5 || z0 < 5 || x0 + s > W - 5 || z0 + s > D - 5) continue;
+    let ok = true, mn = 99, mx = -1;
+    for (let z = z0; z < z0 + s && ok; z++) for (let x = x0; x < x0 + s; x++) {
+      const o = colOcc[z * W + x];
+      if (o && structs[o].kind !== 'tree') { ok = false; break; }
+      const h = groundTop(x, z);
+      if (h < SEA + 1) { ok = false; break; }
+      mn = Math.min(mn, h); mx = Math.max(mx, h);
+    }
+    if (ok && mx - mn <= 8) return { x0, z0 };
+  }
+  return null;
+}
+
+function tryLandmarks(n) {
+  if (!earth.active) return false;
+  for (const L of LANDMARKS) {
+    const T = TYPES['lm_' + L.id];
+    if ((n.tier || 0) < L.tier || n.houses.length < T.minHouses || n.units.size < 20) continue;
+    if (civics.some(c => !c.dead && c.type === 'lm_' + L.id)) continue;
+    if (n.wood < T.wood + 12 || n.stone < T.stone || n.gold < T.gold) continue;
+    const c = cellOf(L), rid = earth.region[c.z * W + c.x] || earth.region[(c.z + 1) * W + c.x] || 0;
+    const r = rid ? earth.regions[rid - 1] : null;
+    if (!r || r.owner !== n.id) continue;
+    const spot = landmarkSpot(L);
+    if (!spot) continue;
+    const st = buildCivic(n, 'lm_' + L.id, spot);
+    if (!st) continue;
+    log(`${L.icon} ${nm(n)} raises the <b>${L.name}</b> in ${r.name}, a wonder of the age!`);
+    sfx('chime', st.cx, st.cz, 1.4);
+    return true;
+  }
+  return false;
+}
+
 const ORDER = ['airport', 'worldtree', 'ziggurat', 'spire', 'well', 'fishing', 'market', 'windmill', 'tower', 'forge', 'barracks', 'temple'];
 
 // ---------- bookkeeping ----------
@@ -316,6 +450,7 @@ function wants(n, type) {
 function tryBuild(n) {
   if (n.starving) return;
   if (n.sites.some(s => !s.dead && !s.built)) return; // finish the houses first
+  if (tryLandmarks(n)) return;
   for (const type of ORDER) {
     if (!wants(n, type)) continue;
     const st = buildCivic(n, type);
@@ -343,6 +478,7 @@ function yearly() {
     let cap = 0;
     const h = n.houses.length;
     for (const s of civicsOf(n)) {
+      if (s.type.startsWith('lm_')) { cap += 4; n.gold += 4; n.unrest = Math.max(0, (n.unrest || 0) - 1); continue; }
       switch (s.type) {
         case 'well': cap += 2; break;
         case 'worldtree': cap += 10; n.food += 6; n.unrest = Math.max(0, (n.unrest || 0) - 1); for (const u of n.units) if (u.alive && Math.hypot(u.x - s.cx, u.z - s.cz) < 30) u.hp = Math.min(u.maxHp, u.hp + 4); break;
@@ -422,6 +558,7 @@ const EFFECT = {
 };
 export function civicHTML(s) {
   const T = TYPES[s.type];
+  if (s.type.startsWith('lm_')) return `<b>${T.icon} ${T.name}</b> of ${s.nation ? nm(s.nation) : 'no one'}<br>${Math.round(s.alive / Math.max(1, s.total) * 100)}% intact<br><span class="dim">a real-world landmark: +4 coin, +4 housing, calms unrest</span>`;
   const pct = Math.round(s.alive / Math.max(1, s.total) * 100);
   return `<b>${T.icon} ${T.name[0].toUpperCase() + T.name.slice(1)}</b> of ${s.nation ? nm(s.nation) : 'no one'}<br>${pct}% intact<br><span class="dim">${EFFECT[s.type]}</span>`;
 }
