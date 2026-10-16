@@ -6,12 +6,13 @@ import { nations, nm, rel } from './nations.js';
 import { units, setState, groundUnder } from './units.js';
 import { compAt, compSize, refreshLandmass } from './landmass.js';
 import { splash } from './effects.js';
+import { pickCargo, settleTrade, GOODS } from './economy.js';
 import { sfx } from './audio.js';
 import { log } from './ui.js';
 
 const fleets = [];
 let scene = null, timer = 3, rr = 0;
-export const fleetStats = { landed: 0, sailed: 0 };
+export const fleetStats = { landed: 0, sailed: 0, trade: 0 };
 const SPEED = 9, CAP = 8;
 const SLOTS = [[-1.5, -0.55], [-1.5, 0.55], [-0.5, -0.55], [-0.5, 0.55], [0.5, -0.55], [0.5, 0.55], [1.5, -0.55], [1.5, 0.55]];
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -25,13 +26,15 @@ const deep = (x, z) => { for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <
 const hullGeo = new THREE.BoxGeometry(6, 0.8, 2.2), bowGeo = new THREE.BoxGeometry(1.6, 0.8, 1.6), deckGeo = new THREE.BoxGeometry(5.6, 0.1, 1.9);
 const mastGeo = new THREE.BoxGeometry(0.2, 4.2, 0.2), sailGeo = new THREE.BoxGeometry(0.08, 2.9, 3.0);
 const wood = new THREE.MeshLambertMaterial({ color: '#6b4a2b' }), plank = new THREE.MeshLambertMaterial({ color: '#b98d55' });
-function makeShip(n) {
+const crateGeo = new THREE.BoxGeometry(0.9, 0.7, 0.9), crateMat = new THREE.MeshLambertMaterial({ color: '#8a5f33' });
+function makeShip(n, trade = false) {
   const g = new THREE.Group();
   const hull = new THREE.Mesh(hullGeo, wood), bow = new THREE.Mesh(bowGeo, wood), deck = new THREE.Mesh(deckGeo, plank), mast = new THREE.Mesh(mastGeo, wood);
   const sail = new THREE.Mesh(sailGeo, new THREE.MeshLambertMaterial({ color: n.color, side: THREE.DoubleSide }));
   bow.position.set(3.0, 0, 0); bow.rotation.y = Math.PI / 4;
   deck.position.y = 0.42; mast.position.set(0.5, 2.5, 0); sail.position.set(0.6, 2.9, 0);
   g.add(hull, bow, deck, mast, sail);
+  if (trade) for (const [x, z] of [[-1.6, -0.5], [-1.6, 0.5], [-0.6, 0.5], [1.4, -0.5]]) { const c = new THREE.Mesh(crateGeo, crateMat); c.position.set(x, 0.85, z); g.add(c); }
   g.traverse(o => { o.castShadow = true; });
   scene.add(g);
   return g;
@@ -144,6 +147,50 @@ function launch(a) {
   return true;
 }
 
+
+// ---------- merchant ships: cargo between coastal nations on different landmasses ----------
+
+function planTrade(a, b) {
+  const ca = new Set();
+  for (const h of a.houses) if (!h.dead) ca.add(compAt(h.cx, h.cz));
+  const targets = b.houses.filter(h => !h.dead && !ca.has(compAt(h.cx, h.cz)));
+  if (!targets.length || !a.houses.length) return null;
+  const home = a.houses.find(h => h.capital) || a.houses[0];
+  const t = targets.sort((p, q) => Math.hypot(p.cx - home.cx, p.cz - home.cz) - Math.hypot(q.cx - home.cx, q.cz - home.cz))[0];
+  const port = a.houses.filter(h => !h.dead && compAt(h.cx, h.cz) > 0).sort((p, q) => Math.hypot(p.cx - t.cx, p.cz - t.cz) - Math.hypot(q.cx - t.cx, q.cz - t.cz))[0];
+  if (!port) return null;
+  for (const shore of nearestShore(Math.floor(port.cx), Math.floor(port.cz), compAt(port.cx, port.cz), 40, t)) {
+    const land = nearLanding(t, compAt(t.cx, t.cz), shore.water);
+    if (!land) continue;
+    const wps = route(shore, land);
+    if (wps) return { shore, land, wps };
+  }
+  return null;
+}
+
+function launchTrade(a) {
+  const partners = nations.filter(m => m.alive && m !== a && m.houses.length && !rel(a, m).war && (m.tier || 0) >= 1);
+  partners.sort(() => Math.random() - 0.5);
+  let b = null, plan = null;
+  for (const m of partners.slice(0, 5)) { plan = planTrade(a, m); if (plan) { b = m; break; } }
+  if (!plan) return false;
+  const load = pickCargo(a, b, 20);
+  if (!load) return false;
+  const f = { kind: 'trade', n: a, enemy: b, state: 'sail', crew: [], shore: plan.shore, land: plan.land, wps: plan.wps, orig: plan.wps, wi: 1, x: plan.shore.wx + 0.5, z: plan.shore.wz + 0.5, h: 0, t: 0, mesh: makeShip(a, true), good: load.good, cargo: load.amount, dist: Math.hypot(plan.land.x - plan.shore.x, plan.land.z - plan.shore.z) };
+  f.h = plan.wps.length > 1 ? Math.atan2(plan.wps[1][1] - f.z, plan.wps[1][0] - f.x) : 0;
+  fleets.push(f);
+  return true;
+}
+
+function arriveTrade(f) {
+  const a = f.n, b = f.enemy;
+  if (f.state === 'return' || !b.alive) { a[f.good] += f.cargo; return; }
+  const { gain, tax } = settleTrade(a, b, f.good, f.cargo, f.dist);
+  fleetStats.trade++;
+  sfx('bell', f.land.x, f.land.z, 0.8);
+  log(`⛵ A merchant ship from ${nm(a)} docks at ${nm(b)} with ${f.cargo} ${GOODS[f.good].icon}: +${gain} 🪙${tax ? `, ${tax} 🪙 in duties for ${b.place}` : ''}.`);
+}
+
 // ---------- running ----------
 function place(f, y) {
   const c = Math.cos(f.h), s = Math.sin(f.h);
@@ -174,15 +221,16 @@ function disembark(f, at) {
   return k;
 }
 
-function end(f) { scene.remove(f.mesh); fleets.splice(fleets.indexOf(f), 1); f.n.fleetCd = 30; }
+function end(f) { scene.remove(f.mesh); fleets.splice(fleets.indexOf(f), 1); if (f.kind !== 'trade') f.n.fleetCd = 30; }
 
 export function updateFleets(dt) {
   if (!scene) return;
   for (let i = fleets.length - 1; i >= 0; i--) {
     const f = fleets[i];
+    const trade = f.kind === 'trade';
     f.crew = f.crew.filter(u => u.alive);
     f.t += dt;
-    const over = !f.n.alive || !f.enemy.alive || !rel(f.n, f.enemy).war || !f.enemy.houses.length;
+    const over = trade ? (!f.n.alive || !f.enemy.alive || rel(f.n, f.enemy).war || !f.enemy.houses.length) : (!f.n.alive || !f.enemy.alive || !rel(f.n, f.enemy).war || !f.enemy.houses.length);
     const bob = WATER_Y + 0.15 + Math.sin(f.t * 2.2) * 0.06;
     if (f.state === 'muster') {
       if (over || !f.crew.length) { for (const u of f.crew) if (u.state === 'goto') { setState(u, 'idle'); u.think = 0.3; } end(f); continue; }
@@ -200,10 +248,10 @@ export function updateFleets(dt) {
       place(f, bob);
       continue;
     }
-    if (!f.crew.length) { end(f); continue; }
+    if (!trade && !f.crew.length) { end(f); continue; }
     if (f.state === 'sail' && over) { // the war ended at sea: turn back
       f.wps = f.orig.slice().reverse(); f.wi = 1; f.state = 'return'; f.land = f.shore;
-      log(`⛵ ${nm(f.n)} recalls its fleet.`);
+      if (!trade) log(`⛵ ${nm(f.n)} recalls its fleet.`);
     }
     const wp = f.wps[f.wi];
     if (wp) {
@@ -213,6 +261,8 @@ export function updateFleets(dt) {
       const sp = Math.min(d, SPEED * dt);
       if (d > 0.01) { f.x += dx / d * sp; f.z += dz / d * sp; }
       if (d < 1.2) f.wi++;
+    } else if (trade) {
+      arriveTrade(f); end(f); continue;
     } else {
       const k = disembark(f, f.land);
       place(f, bob);
@@ -227,10 +277,15 @@ export function updateFleets(dt) {
   timer = 4;
   refreshLandmass();
   const live = nations.filter(n => n.alive && n.enemies.length && n.houses.length);
-  if (!live.length) return;
-  const a = live[rr++ % live.length];
-  a.fleetCd = (a.fleetCd || 0) - 4;
-  if (a.fleetCd > 0 || fleets.some(f => f.n === a)) return;
-  a.fleetCd = 12;
-  launch(a);
+  if (live.length) {
+    const a = live[rr++ % live.length];
+    a.fleetCd = (a.fleetCd || 0) - 4;
+    if (!(a.fleetCd > 0 || fleets.some(f => f.n === a && f.kind !== 'trade'))) { a.fleetCd = 12; launch(a); }
+  }
+  const traders = nations.filter(n => n.alive && n.houses.length >= 4 && (n.tier || 0) >= 1 && !n.starving);
+  if (traders.length) {
+    const a = traders[Math.floor(Math.random() * traders.length)];
+    a.shipCd = (a.shipCd || 0) - 4;
+    if (!(a.shipCd > 0 || fleets.some(f => f.n === a && f.kind === 'trade'))) { a.shipCd = launchTrade(a) ? 20 + Math.random() * 20 : 8; }
+  }
 }
