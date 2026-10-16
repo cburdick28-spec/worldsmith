@@ -3,21 +3,29 @@
 import * as THREE from '../vendor/three.module.js';
 import { W, D, H, SEA, WATER_Y, height } from './world.js';
 import { nations, nm, rel } from './nations.js';
-import { units, setState, groundUnder } from './units.js';
+import { units, setState, groundUnder, killUnit } from './units.js';
 import { compAt, compSize, refreshLandmass } from './landmass.js';
-import { splash } from './effects.js';
+import { splash, sparks, smokeColumn } from './effects.js';
 import { pickCargo, settleTrade, GOODS } from './economy.js';
 import { sfx } from './audio.js';
 import { log } from './ui.js';
 
 const fleets = [];
 let scene = null, timer = 3, rr = 0;
-export const fleetStats = { landed: 0, sailed: 0, trade: 0 };
+export const fleetStats = { landed: 0, sailed: 0, trade: 0, sunk: 0 };
 const SPEED = 9, CAP = 8;
 const SLOTS = [[-1.5, -0.55], [-1.5, 0.55], [-0.5, -0.55], [-0.5, 0.55], [0.5, -0.55], [0.5, 0.55], [1.5, -0.55], [1.5, 0.55]];
 const rand = (a, b) => a + Math.random() * (b - a);
 
+export const _fleets = fleets; // debug/test hook
 export function initFleets(s) { scene = s; }
+// test hook: drop a ship at sea heading for (tx,tz)
+export function _spawn(n, enemy, kind, x, z, tx, tz) {
+  const trade = kind === 'trade', crew = trade ? [] : [...n.units].filter(u => u.alive).slice(0, 6);
+  const f = { kind: trade ? 'trade' : undefined, n, enemy, state: 'sail', crew, shore: { x, z, wx: Math.floor(x), wz: Math.floor(z) }, land: { x: tx, z: tz, wx: Math.floor(tx), wz: Math.floor(tz) }, wps: [[x, z], [tx, tz]], orig: [[x, z], [tx, tz]], wi: 1, x, z, h: 0, t: 0, hp: trade ? 30 : 70, mesh: makeShip(n, trade), good: 'food', cargo: 20, dist: 30 };
+  for (const u of crew) { u.boarded = f; u.held = true; }
+  fleets.push(f); return f;
+}
 
 const isW = (x, z) => x >= 0 && z >= 0 && x < W && z < D && height[z * W + x] < SEA;
 const deep = (x, z) => { for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (!isW(x + dx, z + dz)) return false; return true; };
@@ -67,6 +75,8 @@ function nearLanding(h, comp, water) {
   return best;
 }
 
+function clearLine(x0, z0, x1, z1) { const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) * 2); for (let k = 0; k <= n; k++) { const t = k / n, x = Math.floor(x0 + (x1 - x0) * t), z = Math.floor(z0 + (z1 - z0) * t); if (!isW(x, z)) return false; } return true; }
+
 const par = new Int32Array(W * D), qu = new Int32Array(W * D), vis = new Uint32Array(W * D);
 let vstamp = 0;
 function route(a, b) { // a, b: {wx, wz}; BFS over open water, staying off the coast where it can
@@ -96,12 +106,11 @@ function route(a, b) { // a, b: {wx, wz}; BFS over open water, staying off the c
   };
   const p = run(true) || run(false);
   if (!p) return null;
-  const clear = (x0, z0, x1, z1) => { const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) * 2); for (let k = 0; k <= n; k++) { const t = k / n, x = Math.floor(x0 + (x1 - x0) * t), z = Math.floor(z0 + (z1 - z0) * t); if (!isW(x, z)) return false; } return true; };
   const out = [p[0]]; // string-pull the grid path into a few long legs
   let i = 0;
   while (i < p.length - 1) {
     let j = p.length - 1;
-    while (j > i + 1 && !clear(p[i][0], p[i][1], p[j][0], p[j][1])) j--;
+    while (j > i + 1 && !clearLine(p[i][0], p[i][1], p[j][0], p[j][1])) j--;
     out.push(p[j]); i = j;
   }
   return out;
@@ -140,7 +149,7 @@ function launch(a) {
   const crew = pool.filter(u => compAt(u.x, u.z) === comp).sort((p, q) => Math.hypot(p.x - plan.shore.x, p.z - plan.shore.z) - Math.hypot(q.x - plan.shore.x, q.z - plan.shore.z)).slice(0, CAP);
   if (crew.length < 4) return false;
   for (const u of crew) { setState(u, 'goto'); u.tx = plan.shore.x + 0.5 + rand(-2.5, 2.5); u.tz = plan.shore.z + 0.5 + rand(-2.5, 2.5); }
-  const f = { n: a, enemy: plan.enemy, state: 'muster', crew, shore: plan.shore, land: plan.land, wps: plan.wps, wi: 1, x: plan.shore.wx + 0.5, z: plan.shore.wz + 0.5, h: 0, t: 0, mesh: makeShip(a), orig: plan.wps };
+  const f = { n: a, enemy: plan.enemy, state: 'muster', crew, shore: plan.shore, land: plan.land, wps: plan.wps, wi: 1, x: plan.shore.wx + 0.5, z: plan.shore.wz + 0.5, h: 0, t: 0, mesh: makeShip(a), orig: plan.wps, hp: 70 };
   f.h = plan.wps.length > 1 ? Math.atan2(plan.wps[1][1] - f.z, plan.wps[1][0] - f.x) : 0;
   fleets.push(f);
   log(`⛵ ${nm(a)} gathers ${crew.length} soldiers at the docks to sail against ${nm(plan.enemy)}.`);
@@ -176,7 +185,7 @@ function launchTrade(a) {
   if (!plan) return false;
   const load = pickCargo(a, b, 20);
   if (!load) return false;
-  const f = { kind: 'trade', n: a, enemy: b, state: 'sail', crew: [], shore: plan.shore, land: plan.land, wps: plan.wps, orig: plan.wps, wi: 1, x: plan.shore.wx + 0.5, z: plan.shore.wz + 0.5, h: 0, t: 0, mesh: makeShip(a, true), good: load.good, cargo: load.amount, dist: Math.hypot(plan.land.x - plan.shore.x, plan.land.z - plan.shore.z) };
+  const f = { kind: 'trade', n: a, enemy: b, state: 'sail', crew: [], shore: plan.shore, land: plan.land, wps: plan.wps, orig: plan.wps, wi: 1, x: plan.shore.wx + 0.5, z: plan.shore.wz + 0.5, h: 0, t: 0, hp: 30, mesh: makeShip(a, true), good: load.good, cargo: load.amount, dist: Math.hypot(plan.land.x - plan.shore.x, plan.land.z - plan.shore.z) };
   f.h = plan.wps.length > 1 ? Math.atan2(plan.wps[1][1] - f.z, plan.wps[1][0] - f.x) : 0;
   fleets.push(f);
   return true;
@@ -221,6 +230,61 @@ function disembark(f, at) {
   return k;
 }
 
+// ---------- naval battles ----------
+const dist = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
+
+function reroute(f) { // after a chase: plot a fresh course to the landing from where we are
+  const sx = Math.floor(f.x), sz = Math.floor(f.z);
+  const p = isW(sx, sz) ? route({ wx: sx, wz: sz }, f.land) : null;
+  if (p && p.length > 1) { f.wps = p; f.wi = 1; return; }
+  f.wps = f.orig.slice().reverse(); f.wi = 1; f.state = 'return'; f.land = f.shore;
+}
+
+function sink(g, by) {
+  g.sinking = true; g.sink = 0; fleetStats.sunk++;
+  for (const u of g.crew) if (u.alive) { u.boarded = null; killUnit(u, 'drowned', null); }
+  g.crew = [];
+  if (g.kind === 'trade') {
+    const loot = Math.floor(g.cargo / 2);
+    by.n[g.good] += loot;
+    log(`💥 ${nm(by.n)} sinks a merchant ship of ${nm(g.n)} and seizes ${loot} ${GOODS[g.good].icon}!`);
+  } else log(`💥 The fleet of ${nm(g.n)} is sunk by ${nm(by.n)} at sea!`);
+}
+
+function battles(dt) {
+  for (const f of fleets) {
+    if (f.sinking || f.state === 'muster' || f.kind === 'trade') continue;
+    f.cd = (f.cd || 0) - dt;
+    if (f.state === 'sail') {
+      if (f.chase && (f.chase.sinking || !fleets.includes(f.chase) || dist(f, f.chase) > 45)) { f.chase = null; reroute(f); }
+      if (!f.chase) {
+        let best = null, bd = 28;
+        for (const g of fleets) {
+          if (g === f || g.sinking || g.state === 'muster' || g.n === f.n || !rel(f.n, g.n).war) continue;
+          const d = dist(f, g);
+          if (d < bd && clearLine(f.x, f.z, g.x, g.z)) { bd = d; best = g; }
+        }
+        if (best) { f.chase = best; log(`⚔️ ${nm(f.n)}'s fleet gives chase to a ship of ${nm(best.n)}!`); }
+      }
+    }
+    if (f.cd > 0) continue;
+    let tgt = null, td = 14;
+    for (const g of fleets) {
+      if (g === f || g.sinking || g.state === 'muster' || g.n === f.n || !rel(f.n, g.n).war) continue;
+      const d = dist(f, g);
+      if (d < td) { td = d; tgt = g; }
+    }
+    if (!tgt) continue;
+    f.cd = 1.1;
+    sparks(f.x, WATER_Y + 1.6, f.z, 5); sfx('clash', f.x, f.z, 0.8);
+    if (Math.random() < 0.7) {
+      tgt.hp -= (4 + f.crew.length * 0.9) * rand(0.6, 1.3);
+      sparks(tgt.x, WATER_Y + 1.8, tgt.z, 10); smokeColumn(tgt.x, WATER_Y + 1.2, tgt.z, 3);
+      if (tgt.hp <= 0) sink(tgt, f);
+    } else splash(tgt.x + rand(-4, 4), tgt.z + rand(-4, 4), 8);
+  }
+}
+
 function end(f) { scene.remove(f.mesh); fleets.splice(fleets.indexOf(f), 1); if (f.kind !== 'trade') f.n.fleetCd = 30; }
 
 export function updateFleets(dt) {
@@ -230,6 +294,14 @@ export function updateFleets(dt) {
     const trade = f.kind === 'trade';
     f.crew = f.crew.filter(u => u.alive);
     f.t += dt;
+    if (f.sinking) { // going down: roll, sink, then vanish
+      f.sink += dt;
+      f.mesh.position.y = WATER_Y - f.sink * 0.8;
+      f.mesh.rotation.z = Math.min(0.9, f.sink * 0.4);
+      if (Math.random() < 0.15) smokeColumn(f.x, WATER_Y + 1, f.z, 2);
+      if (f.sink > 4) end(f);
+      continue;
+    }
     const over = trade ? (!f.n.alive || !f.enemy.alive || rel(f.n, f.enemy).war || !f.enemy.houses.length) : (!f.n.alive || !f.enemy.alive || !rel(f.n, f.enemy).war || !f.enemy.houses.length);
     const bob = WATER_Y + 0.15 + Math.sin(f.t * 2.2) * 0.06;
     if (f.state === 'muster') {
@@ -253,14 +325,15 @@ export function updateFleets(dt) {
       f.wps = f.orig.slice().reverse(); f.wi = 1; f.state = 'return'; f.land = f.shore;
       if (!trade) log(`⛵ ${nm(f.n)} recalls its fleet.`);
     }
-    const wp = f.wps[f.wi];
+    const chasing = f.chase && f.state === 'sail';
+    const wp = chasing ? [f.chase.x, f.chase.z] : f.wps[f.wi];
     if (wp) {
       const dx = wp[0] - f.x, dz = wp[1] - f.z, d = Math.hypot(dx, dz);
       const a = Math.atan2(dz, dx); let da = a - f.h; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
       f.h += da * Math.min(1, dt * 2.5);
-      const sp = Math.min(d, SPEED * dt);
+      const sp = chasing && d < 6 ? 0 : Math.min(d, SPEED * dt);
       if (d > 0.01) { f.x += dx / d * sp; f.z += dz / d * sp; }
-      if (d < 1.2) f.wi++;
+      if (!chasing && d < 1.2) f.wi++;
     } else if (trade) {
       arriveTrade(f); end(f); continue;
     } else {
@@ -272,6 +345,7 @@ export function updateFleets(dt) {
     }
     place(f, bob);
   }
+  battles(dt);
   timer -= dt;
   if (timer > 0) return;
   timer = 4;
