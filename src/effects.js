@@ -437,6 +437,55 @@ function updateMeteors(dt) {
   if (!meteors.length) meteorLight.intensity = 0;
 }
 
+
+// ---------- the bomb: a slow warhead, a huge blast, then a mushroom cloud ----------
+
+const nukes = [], clouds = [];
+export function launchNuke(tx, ty, tz) {
+  sfx('whoosh', tx, tz, 1.4);
+  const from = new THREE.Vector3(tx + 20, ty + 120, tz + 20), to = new THREE.Vector3(tx, ty, tz);
+  const m = new THREE.Mesh(meteorGeo, meteorMat);
+  m.scale.setScalar(2.2);
+  m.position.copy(from);
+  scene.add(m);
+  nukes.push({ m, from, to, t: 0, dur: from.distanceTo(to) / 55 });
+}
+
+function updateNukes(dt) {
+  for (let i = nukes.length - 1; i >= 0; i--) {
+    const nk = nukes[i];
+    nk.t += dt;
+    const k = Math.min(1, nk.t / nk.dur), p = nk.m.position;
+    p.lerpVectors(nk.from, nk.to, k);
+    for (let j = 0; j < 4; j++) smokePool.spawn(p.x, p.y, p.z, rand(-1, 1), rand(0, 1), rand(-1, 1), rand(2, 3), COL.smokeA, COL.smokeB, -0.1, 0.4, 0.6);
+    if (k >= 1) {
+      scene.remove(nk.m); nukes.splice(i, 1);
+      if (isWaterCol(p.x, p.z) && p.y <= WATER_Y + 0.5) splash(p.x, p.z, 200);
+      explode(p.x, p.y, p.z, 13, { fire: true, fireRadius: 26, cause: 'nuke' });
+      flash(p.x, p.y + 10, p.z, 0xffffff, 60000);
+      fx.shake = 2.2;
+      clouds.push({ x: p.x, y: p.y, z: p.z, t: 0 });
+    }
+  }
+}
+
+function updateClouds(dt) {
+  for (let i = clouds.length - 1; i >= 0; i--) {
+    const c = clouds[i];
+    c.t += dt;
+    const rise = Math.min(1, c.t / 5), top = c.y + 6 + rise * 46;
+    for (let j = 0; j < 7; j++) { // stem
+      const a = Math.random() * Math.PI * 2, r = rand(0, 3.2 - rise * 1.2);
+      firePool.spawn(c.x + Math.cos(a) * r, c.y + 2 + Math.random() * (top - c.y - 8), c.z + Math.sin(a) * r, 0, rand(2, 5), 0, rand(0.6, 1.2), COL.fireA, COL.fireB, 0, 0.3, 0.9);
+    }
+    if (c.t > 1.2) for (let j = 0; j < 12; j++) { // cap: a rolling ring of smoke
+      const a = Math.random() * Math.PI * 2, r = rand(6, 7 + rise * 11);
+      smokePool.spawn(c.x + Math.cos(a) * r * 0.4, top + rand(-3, 3), c.z + Math.sin(a) * r * 0.4, Math.cos(a) * rand(1, 4), rand(0, 2), Math.sin(a) * rand(1, 4), rand(2.5, 4.5), COL.smokeA, COL.smokeB, -0.05, 0.5, 0.8);
+    }
+    if (c.t > 9) clouds.splice(i, 1);
+  }
+}
+
 const bolts = [];
 export function lightning(tx, ty, tz) {
   sfx('thunder', tx, tz);
@@ -485,6 +534,8 @@ export function updateEffects(dt) {
   updateFire(dt);
   updateDebris(dt);
   updateMeteors(dt);
+  updateNukes(dt);
+  updateClouds(dt);
 }
 
 // real-time effects (keep animating smoothly)
